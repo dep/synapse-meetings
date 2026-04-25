@@ -6,6 +6,19 @@
     <description>Most recent changes with links to updates.</description>
     <language>en</language>
     <item>
+      <title>Version 0.1.1</title>
+      <pubDate>Sat, 25 Apr 2026 12:23:41 +0000</pubDate>
+      <sparkle:version>2</sparkle:version>
+      <sparkle:shortVersionString>0.1.1</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <description><![CDATA[<h2>What's new in 0.1.1</h2><ul><li>New app icon with prominent recording dot</li><li>App now displays as &ldquo;Synapse Meetings&rdquo; (with a space) in Finder, Dock, and menu bar</li></ul>]]></description>
+      <enclosure
+        url="https://github.com/dep/synapse-meetings/releases/download/0.1.1/SynapseMeetings-0.1.1.dmg"
+        sparkle:edSignature="M2bHDc4HJaQMme6gVJjgyzXS+o0E7DoK5cE2coXcs55bSL5XEMhM+PiE51vwaH/e/C3yAlheYtOKvZflDHidCg=="
+        length="5498497"
+        type="application/octet-stream" />
+    </item>
+    <item>
       <title>Version 0.1.0</title>
       <pubDate>Sat, 25 Apr 2026 11:08:32 +0000</pubDate>
       <sparkle:version>1</sparkle:version>
