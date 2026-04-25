@@ -6,6 +6,19 @@
     <description>Most recent changes with links to updates.</description>
     <language>en</language>
     <item>
+      <title>Version 0.1.3</title>
+      <pubDate>Sat, 25 Apr 2026 12:34:03 +0000</pubDate>
+      <sparkle:version>4</sparkle:version>
+      <sparkle:shortVersionString>0.1.3</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <description><![CDATA[<h2>What's new in 0.1.3</h2><ul><li>The application bundle is now named <strong>Synapse Meetings.app</strong> (with a space) instead of <code>SynapseMeetings.app</code>. Finder, Dock, and ⌘-Tab will now display the spaced name correctly.</li></ul><p><strong>One-time cleanup:</strong> if you previously installed 0.1.0–0.1.2, the old <code>SynapseMeetings.app</code> may remain in /Applications alongside the new <code>Synapse Meetings.app</code>. You can drag the old one to the Trash.</p>]]></description>
+      <enclosure
+        url="https://github.com/dep/synapse-meetings/releases/download/0.1.3/SynapseMeetings-0.1.3.dmg"
+        sparkle:edSignature="IzCRCELV4oTrTs8TO+s3UclUVTDGbJsLSvxy234YKyTtCYvXFiSqCpvMGdn+E022WXW1k6Z3WfeeKVelO4pLBA=="
+        length="5498970"
+        type="application/octet-stream" />
+    </item>
+    <item>
       <title>Version 0.1.2</title>
       <pubDate>Sat, 25 Apr 2026 12:29:51 +0000</pubDate>
       <sparkle:version>3</sparkle:version>

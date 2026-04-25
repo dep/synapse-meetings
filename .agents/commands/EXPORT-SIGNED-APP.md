@@ -97,18 +97,18 @@ xcodebuild -exportArchive \
   -exportOptionsPlist build/ExportOptions.plist
 ```
 
-The exported app is `build/export/SynapseMeetings.app`.
+The exported app is `build/export/Synapse Meetings.app`.
 
 ### 3. Verify the signature (Sparkle inside-out)
 
 ```bash
-codesign --verify --deep --strict --verbose=2 build/export/SynapseMeetings.app
+codesign --verify --deep --strict --verbose=2 "build/export/Synapse Meetings.app"
 ```
 
 Should be silent. If Sparkle's nested XPC helpers aren't signed, re-sign manually (rare with proper archive flow):
 
 ```bash
-APP="build/export/SynapseMeetings.app"
+APP="build/export/Synapse Meetings.app"
 codesign --force --timestamp --options runtime --sign "$IDENTITY" \
   "$APP/Contents/Frameworks/Sparkle.framework/Versions/B/XPCServices/Installer.xpc" 2>/dev/null || true
 codesign --force --timestamp --options runtime --sign "$IDENTITY" \
@@ -127,7 +127,7 @@ codesign --force --deep --timestamp --options runtime \
 ### 4. Notarize + staple
 
 ```bash
-APP="build/export/SynapseMeetings.app"
+APP="build/export/Synapse Meetings.app"
 rm -f /tmp/SynapseMeetings-notarize.zip && \
 ditto -c -k --keepParent "$APP" /tmp/SynapseMeetings-notarize.zip && \
 xcrun notarytool submit /tmp/SynapseMeetings-notarize.zip --keychain-profile "notarytool" --wait && \
@@ -140,14 +140,14 @@ spctl --assess --type execute --verbose "$APP"
 Replace `<version>` with the new version (e.g. `0.1.0`):
 
 ```bash
-APP="build/export/SynapseMeetings.app"
+APP="build/export/Synapse Meetings.app"
 rm -rf /tmp/SynapseMeetings-dmg-src && mkdir -p /tmp/SynapseMeetings-dmg-src && \
 cp -R "$APP" /tmp/SynapseMeetings-dmg-src/ && \
 rm -f ~/Desktop/SynapseMeetings-<version>.dmg && \
 create-dmg \
   --volname "Synapse Meetings" \
   --window-pos 200 120 --window-size 660 400 --icon-size 160 \
-  --icon "SynapseMeetings.app" 180 170 --hide-extension "SynapseMeetings.app" \
+  --icon "Synapse Meetings.app" 180 170 --hide-extension "Synapse Meetings.app" \
   --app-drop-link 480 170 \
   ~/Desktop/SynapseMeetings-<version>.dmg \
   /tmp/SynapseMeetings-dmg-src/
@@ -227,7 +227,7 @@ For the very first release (no `appcast.xml` exists yet):
 
 ## Artifacts
 
-- Notarized app: `build/export/SynapseMeetings.app`
+- Notarized app: `build/export/Synapse Meetings.app`
 - DMG: `~/Desktop/SynapseMeetings-<version>.dmg`
 - Appcast: `appcast.xml` (committed to main)
 - GitHub release with DMG attached
