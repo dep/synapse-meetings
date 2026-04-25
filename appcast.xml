@@ -6,6 +6,19 @@
     <description>Most recent changes with links to updates.</description>
     <language>en</language>
     <item>
+      <title>Version 0.1.2</title>
+      <pubDate>Sat, 25 Apr 2026 12:29:51 +0000</pubDate>
+      <sparkle:version>3</sparkle:version>
+      <sparkle:shortVersionString>0.1.2</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <description><![CDATA[<h2>What's new in 0.1.2</h2><ul><li>Finder, Dock, and ⌘-Tab now display the app as &ldquo;Synapse Meetings&rdquo; (with a space). The 0.1.1 fix only updated the in-app menu bar; this release adds the localized <code>InfoPlist.strings</code> that Finder actually reads.</li></ul>]]></description>
+      <enclosure
+        url="https://github.com/dep/synapse-meetings/releases/download/0.1.2/SynapseMeetings-0.1.2.dmg"
+        sparkle:edSignature="xn+KUjZ++5fuqGb9/+ei5rKarT/lRJwDdEOpS6DIoxMJ0VGH5UQxfwRTBeg3xlrLY54g5KN/go80C71ReQtwCA=="
+        length="5498534"
+        type="application/octet-stream" />
+    </item>
+    <item>
       <title>Version 0.1.1</title>
       <pubDate>Sat, 25 Apr 2026 12:23:41 +0000</pubDate>
       <sparkle:version>2</sparkle:version>
