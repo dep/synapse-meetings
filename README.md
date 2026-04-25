@@ -21,7 +21,7 @@ Synapse Meetings ships with [Sparkle](https://sparkle-project.org), so once you'
 ## Requirements
 
 - macOS 14.0 (Sonoma) or later
-- Apple Silicon or Intel
+- **Apple Silicon strongly recommended.** Transcription runs on the Apple Neural Engine via Core ML — Intel Macs will fall back to CPU and may be unusably slow.
 - Microphone access (you'll be prompted on first recording)
 - An [Anthropic API key](https://console.anthropic.com/) for AI summarization (optional)
 - A [GitHub personal access token](https://github.com/settings/tokens) for commit-to-repo (optional)
@@ -29,7 +29,7 @@ Synapse Meetings ships with [Sparkle](https://sparkle-project.org), so once you'
 ## Features
 
 - **Local audio recording** with system + microphone capture
-- **On-device transcription** powered by [FluidAudio](https://github.com/FluidInference/FluidAudio) (Parakeet model — first launch downloads ~600MB of model weights)
+- **On-device transcription** powered by [FluidAudio](https://github.com/FluidInference/FluidAudio) using the [Parakeet TDT 0.6B v3](https://huggingface.co/FluidInference/parakeet-tdt-0.6b-v3-coreml) Core ML model (first launch downloads ~470MB of model weights)
 - **AI-assisted summarization** via the Anthropic API
 - **Commit to GitHub** — push transcripts and summaries directly to a repo from the app
 - **Auto-updating** via Sparkle
