@@ -4,6 +4,9 @@
 Package.resolved
 DerivedData/
 
+# Release artifacts (xcodebuild archive/export output)
+build/
+
 # Xcode
 *.xcodeproj/
 xcuserdata/
