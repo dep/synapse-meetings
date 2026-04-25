@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <channel>
+    <title>Synapse Meetings</title>
+    <link>https://raw.githubusercontent.com/dep/synapse-meetings/main/appcast.xml</link>
+    <description>Most recent changes with links to updates.</description>
+    <language>en</language>
+    <item>
+      <title>Version 0.1.0</title>
+      <pubDate>Sat, 25 Apr 2026 11:08:32 +0000</pubDate>
+      <sparkle:version>1</sparkle:version>
+      <sparkle:shortVersionString>0.1.0</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <description><![CDATA[<h2>Initial release</h2><p>First public release of Synapse Meetings.</p>]]></description>
+      <enclosure
+        url="https://github.com/dep/synapse-meetings/releases/download/0.1.0/SynapseMeetings-0.1.0.dmg"
+        sparkle:edSignature="92flLOw4ZDE95gccCzoqUirkuM61/ncN/J8kQAEibBW8/BEs3RUWrOucDP6fwSErRS/WXl+7OO8f2JpBT/FMDA=="
+        length="5571884"
+        type="application/octet-stream" />
+    </item>
+  </channel>
+</rss>
