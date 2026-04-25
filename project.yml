@@ -1,0 +1,66 @@
+name: SynapseMeetings
+options:
+  bundleIdPrefix: com.synapsemeetings
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+  developmentLanguage: en
+settings:
+  base:
+    SWIFT_VERSION: "5.10"
+    MACOSX_DEPLOYMENT_TARGET: "14.0"
+    ENABLE_HARDENED_RUNTIME: NO
+    DEAD_CODE_STRIPPING: YES
+    CODE_SIGN_STYLE: Automatic
+    CODE_SIGN_IDENTITY: "-"
+    CODE_SIGNING_REQUIRED: NO
+    CODE_SIGNING_ALLOWED: NO
+packages:
+  FluidAudio:
+    url: https://github.com/FluidInference/FluidAudio.git
+    from: "0.14.1"
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    from: "2.6.4"
+targets:
+  SynapseMeetings:
+    type: application
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - path: SynapseMeetings
+    resources:
+      - path: SynapseMeetings/Resources
+        optional: true
+    info:
+      path: SynapseMeetings/Info.plist
+      properties:
+        CFBundleDisplayName: Synapse Meetings
+        CFBundleShortVersionString: "0.1.0"
+        CFBundleVersion: "1"
+        LSMinimumSystemVersion: "14.0"
+        NSMicrophoneUsageDescription: "Synapse Meetings needs microphone access to record your meetings for transcription."
+        NSHumanReadableCopyright: "© 2026 Synapse Meetings"
+        SUFeedURL: "https://raw.githubusercontent.com/dep/synapse-meetings/main/appcast.xml"
+        SUPublicEDKey: "Tnoq0NNryfeGcjS0eQ2xfuOuvqf4dRoa3wF86ljVZh4="
+        SUEnableAutomaticChecks: true
+        SUScheduledCheckInterval: 86400
+    entitlements:
+      path: SynapseMeetings/SynapseMeetings.entitlements
+      properties:
+        com.apple.security.app-sandbox: false
+        com.apple.security.device.audio-input: true
+        com.apple.security.network.client: true
+        com.apple.security.files.user-selected.read-write: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.synapsemeetings.app
+        GENERATE_INFOPLIST_FILE: NO
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        COMBINE_HIDPI_IMAGES: YES
+        ENABLE_PREVIEWS: YES
+    dependencies:
+      - package: FluidAudio
+        product: FluidAudio
+      - package: Sparkle
+        product: Sparkle
