@@ -30,6 +30,18 @@ final class AppState: ObservableObject {
         transcriber.objectWillChange
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
+
+        GlobalHotkeyService.shared.onToggleRecording = { [weak self] in
+            self?.toggleRecording()
+        }
+    }
+
+    func toggleRecording() {
+        if recorder.isRecording {
+            if let r = selectedRecording { stopRecordingAndProcess(r) }
+        } else {
+            requestNewRecording()
+        }
     }
 
     var selectedRecording: Recording? {

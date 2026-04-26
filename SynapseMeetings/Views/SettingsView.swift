@@ -9,6 +9,7 @@ struct SettingsView: View {
     @State private var githubHasStored: Bool = false
     @State private var saveError: String?
     @State private var savedFlash: Bool = false
+    @State private var globalHotkey: KeyCombo? = GlobalHotkeyService.shared.keyCombo
 
     private let availableModels: [String] = [
         "claude-opus-4-7",
@@ -22,6 +23,8 @@ struct SettingsView: View {
                 .tabItem { Label("API Keys", systemImage: "key.fill") }
             modelTab
                 .tabItem { Label("Model", systemImage: "sparkles") }
+            shortcutsTab
+                .tabItem { Label("Shortcuts", systemImage: "keyboard") }
             aboutTab
                 .tabItem { Label("About", systemImage: "info.circle") }
         }
@@ -80,6 +83,21 @@ struct SettingsView: View {
                 }
                 .pickerStyle(.menu)
                 Text("Sonnet 4.6 is a great default. Opus is smartest. Haiku is fastest and cheapest.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .formStyle(.grouped)
+        .padding()
+    }
+
+    private var shortcutsTab: some View {
+        Form {
+            Section("Recording") {
+                LabeledContent("Start / Stop recording") {
+                    KeyRecorderField(keyCombo: $globalHotkey)
+                }
+                Text("Works system-wide, even when the app is in the background.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
