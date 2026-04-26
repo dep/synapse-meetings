@@ -6,6 +6,19 @@
     <description>Most recent changes with links to updates.</description>
     <language>en</language>
     <item>
+      <title>Version 0.1.4</title>
+      <pubDate>Sun, 26 Apr 2026 11:13:12 +0000</pubDate>
+      <sparkle:version>5</sparkle:version>
+      <sparkle:shortVersionString>0.1.4</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <description><![CDATA[<h2>What's new in 0.1.4</h2><ul><li>New native toolbar Record button with proper hover and press states — no more floating pill 💅</li><li>Global hotkey to start/stop recording from anywhere, configurable in Settings → Shortcuts</li></ul>]]></description>
+      <enclosure
+        url="https://github.com/dep/synapse-meetings/releases/download/0.1.4/SynapseMeetings-0.1.4.dmg"
+        sparkle:edSignature="Sjlo3zfEQim/zCn23Cen5LbhWlikyWJsDxLTXfkPbuLDgiXaO3vW6co7uqFGTmsu3RCd5imYvNOg+LRpi5feCw=="
+        length="5520646"
+        type="application/octet-stream" />
+    </item>
+    <item>
       <title>Version 0.1.3</title>
       <pubDate>Sat, 25 Apr 2026 12:34:03 +0000</pubDate>
       <sparkle:version>4</sparkle:version>
