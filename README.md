@@ -51,3 +51,7 @@ Then build and run the `SynapseMeetings` scheme in Xcode.
 ## Releasing
 
 See [`.agents/commands/EXPORT-SIGNED-APP.md`](.agents/commands/EXPORT-SIGNED-APP.md) for the full sign + notarize + Sparkle release pipeline.
+
+## License
+
+[MIT](LICENSE) © 2026 Synapse Meetings
