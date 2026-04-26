@@ -9,7 +9,7 @@ struct ContentView: View {
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             RecordingsListView()
-                .navigationSplitViewColumnWidth(min: 240, ideal: 280, max: 360)
+                .navigationSplitViewColumnWidth(min: 180, ideal: 300, max: 500)
         } content: {
             if let recording = app.selectedRecording {
                 RecordingDetailView(recording: recording)
@@ -18,13 +18,14 @@ struct ContentView: View {
                 EmptyDetailView()
             }
         } detail: {
-            if let recording = app.selectedRecording {
-                CommitSidebarView(recording: recording)
-                    .frame(minWidth: 280, idealWidth: 320, maxWidth: 380)
-            } else {
-                EmptyCommitView()
-                    .frame(minWidth: 280, idealWidth: 320, maxWidth: 380)
+            Group {
+                if let recording = app.selectedRecording {
+                    CommitSidebarView(recording: recording)
+                } else {
+                    EmptyCommitView()
+                }
             }
+            .navigationSplitViewColumnWidth(min: 180, ideal: 300, max: 500)
         }
         .navigationTitle("Synapse Meetings")
         .toolbar {
