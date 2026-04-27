@@ -6,6 +6,19 @@
     <description>Most recent changes with links to updates.</description>
     <language>en</language>
     <item>
+      <title>Version 0.1.6</title>
+      <pubDate>Mon, 27 Apr 2026 16:58:00 +0000</pubDate>
+      <sparkle:version>7</sparkle:version>
+      <sparkle:shortVersionString>0.1.6</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <description><![CDATA[<h2>What's new in 0.1.6</h2><ul><li>Live transcription appears in real-time as you speak during recording</li><li>Take notes while recording — they're saved automatically and woven into the AI summary</li><li>Commit sidebar now remembers your last repo, branch, and folder</li></ul>]]></description>
+      <enclosure
+        url="https://github.com/dep/synapse-meetings/releases/download/0.1.6/SynapseMeetings-0.1.6.dmg"
+        sparkle:edSignature="Cye7YxylVGcyujQ2Cxfz8HuxlLzYF9GmD6fCcrvMy/K5n+jsUjBwWgVe5wvI8fDBccT47WsDWz3VpNMZJHt8Bg=="
+        length="5557329"
+        type="application/octet-stream" />
+    </item>
+    <item>
       <title>Version 0.1.5</title>
       <pubDate>Mon, 27 Apr 2026 14:33:10 +0000</pubDate>
       <sparkle:version>6</sparkle:version>
