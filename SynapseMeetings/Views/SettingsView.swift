@@ -149,11 +149,13 @@ struct SettingsView: View {
     private func save() {
         saveError = nil
         do {
-            if !anthropicKeyDraft.isEmpty {
-                try KeychainService.shared.set(anthropicKeyDraft, for: .anthropicAPIKey)
+            let trimmedAnthropic = anthropicKeyDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmedAnthropic.isEmpty {
+                try KeychainService.shared.set(trimmedAnthropic, for: .anthropicAPIKey)
             }
-            if !githubPATDraft.isEmpty {
-                try KeychainService.shared.set(githubPATDraft, for: .githubPAT)
+            let trimmedGithub = githubPATDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmedGithub.isEmpty {
+                try KeychainService.shared.set(trimmedGithub, for: .githubPAT)
             }
             withAnimation { savedFlash = true }
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) {

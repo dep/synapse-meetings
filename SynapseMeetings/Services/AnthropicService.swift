@@ -34,7 +34,11 @@ struct AnthropicService {
     }
 
     static func makeFromKeychain(model: String? = nil) throws -> AnthropicService {
-        guard let key = KeychainService.shared.get(.anthropicAPIKey), !key.isEmpty else {
+        guard let raw = KeychainService.shared.get(.anthropicAPIKey) else {
+            throw AnthropicError.missingAPIKey
+        }
+        let key = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !key.isEmpty else {
             throw AnthropicError.missingAPIKey
         }
         return AnthropicService(apiKey: key, model: model ?? defaultModel)
