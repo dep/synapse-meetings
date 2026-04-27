@@ -13,6 +13,10 @@ final class AppState: ObservableObject {
     @Published var newRecordingRequest: UUID?
 
     @Published var pipelineErrors: [UUID: String] = [:]
+    @Published private(set) var liveTranscript: String = ""
+
+    private var liveTranscriptTask: Task<Void, Never>?
+    private var lastChunkTranscriptLength = 0
 
     @AppStorage("anthropicModel") var anthropicModel: String = AnthropicService.defaultModel
 
@@ -57,6 +61,11 @@ final class AppState: ObservableObject {
 
     func startNewRecording() throws -> Recording {
         let url = store.newAudioURL()
+        liveTranscript = ""
+        lastChunkTranscriptLength = 0
+        recorder.onChunk = { [weak self] chunkURL in
+            self?.handleChunk(chunkURL)
+        }
         try recorder.start(writingTo: url)
         let recording = Recording(
             title: Self.suggestedTitle(for: Date()),
@@ -68,7 +77,31 @@ final class AppState: ObservableObject {
         return recording
     }
 
+    private func handleChunk(_ url: URL) {
+        liveTranscriptTask?.cancel()
+        liveTranscriptTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                let text = try await transcriber.transcribe(fileAt: url)
+                try? FileManager.default.removeItem(at: url)
+                guard !Task.isCancelled else { return }
+                // Each chunk transcribes the full audio so far, so we replace
+                // (not append) — that way Parakeet's evolving understanding
+                // of context shows up cleanly without duplication artifacts.
+                let cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                self.liveTranscript = cleaned
+                self.lastChunkTranscriptLength = cleaned.count
+            } catch {
+                NSLog("Live chunk transcription failed: \(error)")
+                try? FileManager.default.removeItem(at: url)
+            }
+        }
+    }
+
     func stopRecordingAndProcess(_ recording: Recording) {
+        liveTranscriptTask?.cancel()
+        liveTranscriptTask = nil
+        recorder.onChunk = nil
         let stoppedURL = recorder.stop()
         var updated = recording
         updated.duration = recorder.elapsed
@@ -81,6 +114,12 @@ final class AppState: ObservableObject {
         updated.status = .transcribing
         store.upsert(updated)
         runPipeline(for: updated.id)
+    }
+
+    func updateLiveNotes(for id: Recording.ID, notes: String) {
+        guard var rec = store.recordings.first(where: { $0.id == id }) else { return }
+        rec.liveNotes = notes
+        store.upsert(rec)
     }
 
     func retry(_ recording: Recording) {
@@ -133,11 +172,20 @@ final class AppState: ObservableObject {
                 // Claude tends to reuse it verbatim instead of inventing a real title.
                 let summaryOnly = try await anthropic.summarize(
                     transcript: recording.transcript,
+                    liveNotes: recording.liveNotes,
                     suggestedTitle: nil
                 )
+                let trimmedNotes = recording.liveNotes.trimmingCharacters(in: .whitespacesAndNewlines)
+                let notesSection = trimmedNotes.isEmpty ? "" : """
+
+                ## 📝 Notes taken during meeting
+
+                \(trimmedNotes)
+
+                """
                 let combined = """
                 \(summaryOnly.trimmingCharacters(in: .whitespacesAndNewlines))
-
+                \(notesSection)
                 ---
 
                 ## Raw transcript

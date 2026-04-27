@@ -45,7 +45,10 @@ struct CommitSidebarView: View {
         }
         .frame(maxHeight: .infinity)
         .background(.background)
-        .onAppear { ensureLoadedRepos() }
+        .onAppear {
+            resetForNewRecording()
+            ensureLoadedRepos()
+        }
         .onChange(of: recording.id) { _, _ in resetForNewRecording() }
         .onChange(of: recording.title) { _, _ in
             // Title likely just got smarter (Claude finished summarizing). Refresh the

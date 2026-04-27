@@ -45,9 +45,9 @@ struct AnthropicService {
     }
 
     /// Returns markdown matching the Synapse Meetings summary template.
-    func summarize(transcript: String, suggestedTitle: String?) async throws -> String {
+    func summarize(transcript: String, liveNotes: String = "", suggestedTitle: String?) async throws -> String {
         let systemPrompt = Self.systemPrompt
-        let userPrompt = Self.userPrompt(transcript: transcript, suggestedTitle: suggestedTitle)
+        let userPrompt = Self.userPrompt(transcript: transcript, liveNotes: liveNotes, suggestedTitle: suggestedTitle)
 
         let body: [String: Any] = [
             "model": model,
@@ -104,7 +104,22 @@ struct AnthropicService {
     The first line MUST be a single H1 heading (`# Title Here`) with a SHORT (3–8 words), specific, descriptive title that captures what the meeting was actually about. Examples of good titles: `# Q3 Roadmap Sync`, `# Hiring Loop Debrief — Sarah`, `# Auth Migration Kickoff`. Do NOT use generic titles like `# Recording`, `# Meeting Notes`, `# Audio Test`, or anything containing a date — the date is already tracked separately. If the transcript is too short or contains no meaningful content (e.g. just a mic test), use `# Brief Audio Note`.
     """
 
-    private static func userPrompt(transcript: String, suggestedTitle: String?) -> String {
+    private static func userPrompt(transcript: String, liveNotes: String, suggestedTitle: String?) -> String {
+        let notesBlock: String
+        let trimmedNotes = liveNotes.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmedNotes.isEmpty {
+            notesBlock = ""
+        } else {
+            notesBlock = """
+
+            The user took the following notes DURING the meeting. Treat these as high-signal — the user thought they were important enough to write down in real-time. Make sure the summary reflects them, especially in Key Points and Action Items:
+
+            \"\"\"
+            \(trimmedNotes)
+            \"\"\"
+
+            """
+        }
         return """
         Generate a Markdown meeting summary from the transcript below using EXACTLY this structure:
 
@@ -141,7 +156,7 @@ struct AnthropicService {
         Include any particularly important or memorable statements that capture the essence of discussions. Omit this section if nothing notable.
 
         ---
-
+        \(notesBlock)
         Transcript:
         \"\"\"
         \(transcript)

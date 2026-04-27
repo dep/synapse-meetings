@@ -64,7 +64,7 @@ struct RecordingDetailView: View {
         case .recording:
             RecordingInProgressView(recording: recording)
         case .transcribing:
-            ProcessingView(message: "Transcribing with Parakeet…", systemImage: "waveform.badge.magnifyingglass")
+            TranscribingView(message: "Transcribing with Parakeet…")
         case .summarizing:
             ProcessingView(message: "Summarizing with Claude…", systemImage: "sparkles")
         case .failed:
@@ -133,33 +133,108 @@ private struct RecordingInProgressView: View {
     @EnvironmentObject var app: AppState
     let recording: Recording
 
+    @State private var notesDraft: String = ""
+
     var body: some View {
-        VStack(spacing: 24) {
-            Spacer()
-            ZStack {
-                Circle()
-                    .stroke(.red.opacity(0.15), lineWidth: 18)
-                    .frame(width: 180, height: 180)
-                Circle()
-                    .stroke(.red.opacity(0.35), lineWidth: 4)
-                    .frame(width: 180, height: 180)
-                    .scaleEffect(1 + CGFloat(app.recorder.level) * 0.25)
-                    .animation(.easeOut(duration: 0.15), value: app.recorder.level)
-                Image(systemName: "mic.fill")
-                    .font(.system(size: 56, weight: .semibold))
-                    .foregroundStyle(.red)
+        VStack(spacing: 0) {
+            // Top bar: waveform + timer
+            HStack(spacing: 16) {
+                ZStack {
+                    Circle()
+                        .stroke(.red.opacity(0.15), lineWidth: 6)
+                        .frame(width: 48, height: 48)
+                    Circle()
+                        .stroke(.red.opacity(0.4), lineWidth: 2)
+                        .frame(width: 48, height: 48)
+                        .scaleEffect(1 + CGFloat(app.recorder.level) * 0.25)
+                        .animation(.easeOut(duration: 0.15), value: app.recorder.level)
+                    Image(systemName: "mic.fill")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(.red)
+                }
+                Text(formattedElapsed(app.recorder.elapsed))
+                    .font(.system(size: 22, weight: .semibold, design: .monospaced))
+                    .monospacedDigit()
+                Spacer()
+                Text("Stop recording when done")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
             }
-            Text(formattedElapsed(app.recorder.elapsed))
-                .font(.system(size: 36, weight: .semibold, design: .monospaced))
-                .monospacedDigit()
-            Text("Recording in progress — hit Stop in the toolbar when you're done.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 40)
-            Spacer()
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+
+            Divider()
+
+            // Live transcript (top half)
+            VStack(alignment: .leading, spacing: 0) {
+                HStack {
+                    Label("Live transcript", systemImage: "waveform")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .textCase(.uppercase)
+                    Spacer()
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 10)
+                .padding(.bottom, 4)
+
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 0) {
+                            if app.liveTranscript.isEmpty {
+                                Text("Transcription will appear here as you speak…")
+                                    .font(.callout)
+                                    .foregroundStyle(.tertiary)
+                                    .padding(16)
+                            } else {
+                                Text(app.liveTranscript)
+                                    .font(.system(.body, design: .default))
+                                    .foregroundStyle(.primary)
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 8)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .id("transcript")
+                            }
+                        }
+                    }
+                    .onChange(of: app.liveTranscript) { _, _ in
+                        withAnimation { proxy.scrollTo("transcript", anchor: .bottom) }
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            Divider()
+
+            // Notes editor (bottom half)
+            VStack(alignment: .leading, spacing: 0) {
+                HStack {
+                    Label("Your notes", systemImage: "square.and.pencil")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .textCase(.uppercase)
+                    Spacer()
+                    Text("Saved automatically — included in the summary")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 10)
+                .padding(.bottom, 4)
+
+                TextEditor(text: $notesDraft)
+                    .font(.system(.body, design: .default))
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 12)
+                    .scrollContentBackground(.hidden)
+                    .background(.background)
+                    .onChange(of: notesDraft) { _, newValue in
+                        app.updateLiveNotes(for: recording.id, notes: newValue)
+                    }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .onAppear { notesDraft = recording.liveNotes }
     }
 
     private func formattedElapsed(_ t: TimeInterval) -> String {
@@ -167,6 +242,42 @@ private struct RecordingInProgressView: View {
         let m = total / 60
         let s = total % 60
         return String(format: "%02d:%02d", m, s)
+    }
+}
+
+private struct TranscribingView: View {
+    @EnvironmentObject var app: AppState
+    let message: String
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 10) {
+                ProgressView().controlSize(.small)
+                Text(message)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                Spacer()
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+
+            Divider()
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    if app.liveTranscript.isEmpty {
+                        ProcessingView(message: message, systemImage: "waveform.badge.magnifyingglass")
+                    } else {
+                        Text(app.liveTranscript)
+                            .font(.system(.body, design: .default))
+                            .foregroundStyle(.primary)
+                            .padding(16)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
     }
 }
 
