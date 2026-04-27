@@ -6,6 +6,19 @@
     <description>Most recent changes with links to updates.</description>
     <language>en</language>
     <item>
+      <title>Version 0.1.5</title>
+      <pubDate>Mon, 27 Apr 2026 14:33:10 +0000</pubDate>
+      <sparkle:version>6</sparkle:version>
+      <sparkle:shortVersionString>0.1.5</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <description><![CDATA[<h2>What's new in 0.1.5</h2><ul><li>Fixed a bug where pasting an API key with trailing whitespace or a newline caused summarization to fail with a 401 error</li></ul>]]></description>
+      <enclosure
+        url="https://github.com/dep/synapse-meetings/releases/download/0.1.5/SynapseMeetings-0.1.5.dmg"
+        sparkle:edSignature="wC2ocP1uTtPatTmkYtvSdHSVRzyUfCz9ubiOWQwEWza7HrGNPhoofaVD+VaaotvsH5rR9rZnbSCUMRtGQNAPAg=="
+        length="5523079"
+        type="application/octet-stream" />
+    </item>
+    <item>
       <title>Version 0.1.4</title>
       <pubDate>Sun, 26 Apr 2026 11:13:12 +0000</pubDate>
       <sparkle:version>5</sparkle:version>

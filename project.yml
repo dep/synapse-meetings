@@ -37,8 +37,8 @@ targets:
       properties:
         CFBundleName: Synapse Meetings
         CFBundleDisplayName: Synapse Meetings
-        CFBundleShortVersionString: "0.1.4"
-        CFBundleVersion: "5"
+        CFBundleShortVersionString: "0.1.5"
+        CFBundleVersion: "6"
         LSMinimumSystemVersion: "14.0"
         NSMicrophoneUsageDescription: "Synapse Meetings needs microphone access to record your meetings for transcription."
         NSHumanReadableCopyright: "© 2026 Synapse Meetings"
