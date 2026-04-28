@@ -45,9 +45,19 @@ struct AnthropicService {
     }
 
     /// Returns markdown matching the Synapse Meetings summary template.
-    func summarize(transcript: String, liveNotes: String = "", suggestedTitle: String?) async throws -> String {
+    func summarize(
+        transcript: String,
+        liveNotes: String = "",
+        attendees: [String] = [],
+        suggestedTitle: String?
+    ) async throws -> String {
         let systemPrompt = Self.systemPrompt
-        let userPrompt = Self.userPrompt(transcript: transcript, liveNotes: liveNotes, suggestedTitle: suggestedTitle)
+        let userPrompt = Self.userPrompt(
+            transcript: transcript,
+            liveNotes: liveNotes,
+            attendees: attendees,
+            suggestedTitle: suggestedTitle
+        )
 
         let body: [String: Any] = [
             "model": model,
@@ -104,7 +114,12 @@ struct AnthropicService {
     The first line MUST be a single H1 heading (`# Title Here`) with a SHORT (3–8 words), specific, descriptive title that captures what the meeting was actually about. Examples of good titles: `# Q3 Roadmap Sync`, `# Hiring Loop Debrief — Sarah`, `# Auth Migration Kickoff`. Do NOT use generic titles like `# Recording`, `# Meeting Notes`, `# Audio Test`, or anything containing a date — the date is already tracked separately. If the transcript is too short or contains no meaningful content (e.g. just a mic test), use `# Brief Audio Note`.
     """
 
-    private static func userPrompt(transcript: String, liveNotes: String, suggestedTitle: String?) -> String {
+    private static func userPrompt(
+        transcript: String,
+        liveNotes: String,
+        attendees: [String],
+        suggestedTitle: String?
+    ) -> String {
         let notesBlock: String
         let trimmedNotes = liveNotes.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmedNotes.isEmpty {
@@ -117,6 +132,22 @@ struct AnthropicService {
             \"\"\"
             \(trimmedNotes)
             \"\"\"
+
+            """
+        }
+        let attendeesBlock: String
+        if attendees.isEmpty {
+            attendeesBlock = ""
+        } else {
+            let bulletList = attendees.map { "- [[\($0)]]" }.joined(separator: "\n")
+            attendeesBlock = """
+
+            The user manually specified the meeting attendees below. This list is AUTHORITATIVE — use it verbatim for the `## 👥 Participants` section, in the exact order given. Do NOT add inferred names from the transcript, do NOT remove anyone, and do NOT change spelling.
+
+            Additionally, throughout the ENTIRE summary (Participants, Key Points, Action Items, Open Questions, Next Steps, Quotes, and the opening paragraph), wrap every occurrence of these names in double square brackets like `[[Name]]` so they link in an Obsidian-style vault. Match names case-insensitively and bracket each occurrence, including possessives (e.g. `[[Sarah]]'s`). Only bracket names from this list — do not bracket other people mentioned in the transcript.
+
+            Attendees:
+            \(bulletList)
 
             """
         }
@@ -156,7 +187,7 @@ struct AnthropicService {
         Include any particularly important or memorable statements that capture the essence of discussions. Omit this section if nothing notable.
 
         ---
-        \(notesBlock)
+        \(attendeesBlock)\(notesBlock)
         Transcript:
         \"\"\"
         \(transcript)

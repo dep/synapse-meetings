@@ -134,6 +134,7 @@ private struct RecordingInProgressView: View {
     let recording: Recording
 
     @State private var notesDraft: String = ""
+    @State private var attendeesDraft: [Attendee] = []
 
     var body: some View {
         VStack(spacing: 0) {
@@ -206,35 +207,48 @@ private struct RecordingInProgressView: View {
 
             Divider()
 
-            // Notes editor (bottom half)
-            VStack(alignment: .leading, spacing: 0) {
-                HStack {
-                    Label("Your notes", systemImage: "square.and.pencil")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                        .textCase(.uppercase)
-                    Spacer()
-                    Text("Saved automatically — included in the summary")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                }
-                .padding(.horizontal, 16)
-                .padding(.top, 10)
-                .padding(.bottom, 4)
-
-                TextEditor(text: $notesDraft)
-                    .font(.system(.body, design: .default))
-                    .padding(.horizontal, 12)
-                    .padding(.bottom, 12)
-                    .scrollContentBackground(.hidden)
-                    .background(.background)
-                    .onChange(of: notesDraft) { _, newValue in
-                        app.updateLiveNotes(for: recording.id, notes: newValue)
+            // Notes editor (bottom half) + Attendees sidebar
+            HStack(spacing: 0) {
+                VStack(alignment: .leading, spacing: 0) {
+                    HStack {
+                        Label("Your notes", systemImage: "square.and.pencil")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                            .textCase(.uppercase)
+                        Spacer()
+                        Text("Saved automatically — included in the summary")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
                     }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 10)
+                    .padding(.bottom, 4)
+
+                    TextEditor(text: $notesDraft)
+                        .font(.system(.body, design: .default))
+                        .padding(.horizontal, 12)
+                        .padding(.bottom, 12)
+                        .scrollContentBackground(.hidden)
+                        .background(.background)
+                        .onChange(of: notesDraft) { _, newValue in
+                            app.updateLiveNotes(for: recording.id, notes: newValue)
+                        }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                Divider()
+
+                AttendeesSidebarView(
+                    recordingID: recording.id,
+                    attendees: $attendeesDraft
+                )
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .onAppear { notesDraft = recording.liveNotes }
+        .onAppear {
+            notesDraft = recording.liveNotes
+            attendeesDraft = recording.attendees
+        }
     }
 
     private func formattedElapsed(_ t: TimeInterval) -> String {

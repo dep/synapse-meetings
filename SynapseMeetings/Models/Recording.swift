@@ -20,6 +20,18 @@ enum RecordingStatus: String, Codable {
     }
 }
 
+struct Attendee: Identifiable, Codable, Equatable, Hashable {
+    var id: UUID
+    var name: String
+    var selected: Bool
+
+    init(id: UUID = UUID(), name: String, selected: Bool = true) {
+        self.id = id
+        self.name = name
+        self.selected = selected
+    }
+}
+
 struct Recording: Identifiable, Codable, Equatable, Hashable {
     let id: UUID
     var title: String
@@ -31,6 +43,7 @@ struct Recording: Identifiable, Codable, Equatable, Hashable {
     var summaryMarkdown: String
     var status: RecordingStatus
     var lastError: String?
+    var attendees: [Attendee]
 
     var committedRepo: String?
     var committedBranch: String?
@@ -48,7 +61,8 @@ struct Recording: Identifiable, Codable, Equatable, Hashable {
         liveNotes: String = "",
         summaryMarkdown: String = "",
         status: RecordingStatus = .recording,
-        lastError: String? = nil
+        lastError: String? = nil,
+        attendees: [Attendee] = []
     ) {
         self.id = id
         self.title = title
@@ -60,6 +74,7 @@ struct Recording: Identifiable, Codable, Equatable, Hashable {
         self.summaryMarkdown = summaryMarkdown
         self.status = status
         self.lastError = lastError
+        self.attendees = attendees
     }
 
     init(from decoder: Decoder) throws {
@@ -74,6 +89,7 @@ struct Recording: Identifiable, Codable, Equatable, Hashable {
         summaryMarkdown = try c.decode(String.self, forKey: .summaryMarkdown)
         status = try c.decode(RecordingStatus.self, forKey: .status)
         lastError = try c.decodeIfPresent(String.self, forKey: .lastError)
+        attendees = try c.decodeIfPresent([Attendee].self, forKey: .attendees) ?? []
         committedRepo = try c.decodeIfPresent(String.self, forKey: .committedRepo)
         committedBranch = try c.decodeIfPresent(String.self, forKey: .committedBranch)
         committedPath = try c.decodeIfPresent(String.self, forKey: .committedPath)

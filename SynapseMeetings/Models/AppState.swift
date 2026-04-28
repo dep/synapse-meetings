@@ -14,9 +14,13 @@ final class AppState: ObservableObject {
 
     @Published var pipelineErrors: [UUID: String] = [:]
     @Published private(set) var liveTranscript: String = ""
+    @Published private(set) var recentAttendees: [String] = []
 
     private var liveTranscriptTask: Task<Void, Never>?
     private var lastChunkTranscriptLength = 0
+
+    private static let recentAttendeesKey = "recentAttendees"
+    private static let recentAttendeesLimit = 100
 
     @AppStorage("anthropicModel") var anthropicModel: String = AnthropicService.defaultModel
 
@@ -38,6 +42,8 @@ final class AppState: ObservableObject {
         GlobalHotkeyService.shared.onToggleRecording = { [weak self] in
             self?.toggleRecording()
         }
+
+        loadRecentAttendees()
     }
 
     func toggleRecording() {
@@ -122,6 +128,34 @@ final class AppState: ObservableObject {
         store.upsert(rec)
     }
 
+    // MARK: - Attendees
+
+    func updateAttendees(for id: Recording.ID, attendees: [Attendee]) {
+        guard var rec = store.recordings.first(where: { $0.id == id }) else { return }
+        rec.attendees = attendees
+        store.upsert(rec)
+    }
+
+    /// Adds a name to the global recents pool. Called only when the user explicitly
+    /// types-and-adds a brand-new attendee — not on every check/uncheck.
+    func rememberRecentAttendee(_ name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        let key = trimmed.lowercased()
+        var merged = recentAttendees.filter { $0.lowercased() != key }
+        merged.insert(trimmed, at: 0)
+        if merged.count > Self.recentAttendeesLimit {
+            merged = Array(merged.prefix(Self.recentAttendeesLimit))
+        }
+        recentAttendees = merged
+        UserDefaults.standard.set(merged, forKey: Self.recentAttendeesKey)
+    }
+
+    private func loadRecentAttendees() {
+        let saved = UserDefaults.standard.stringArray(forKey: Self.recentAttendeesKey) ?? []
+        recentAttendees = saved
+    }
+
     func retry(_ recording: Recording) {
         var updated = recording
         updated.lastError = nil
@@ -170,9 +204,14 @@ final class AppState: ObservableObject {
                 let anthropic = try AnthropicService.makeFromKeychain(model: anthropicModel)
                 // Don't pass the placeholder "Recording — date" title as a suggestion —
                 // Claude tends to reuse it verbatim instead of inventing a real title.
+                let selectedAttendees = recording.attendees
+                    .filter { $0.selected }
+                    .map { $0.name.trimmingCharacters(in: .whitespacesAndNewlines) }
+                    .filter { !$0.isEmpty }
                 let summaryOnly = try await anthropic.summarize(
                     transcript: recording.transcript,
                     liveNotes: recording.liveNotes,
+                    attendees: selectedAttendees,
                     suggestedTitle: nil
                 )
                 let trimmedNotes = recording.liveNotes.trimmingCharacters(in: .whitespacesAndNewlines)
