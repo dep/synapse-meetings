@@ -6,6 +6,19 @@
     <description>Most recent changes with links to updates.</description>
     <language>en</language>
     <item>
+      <title>Version 0.4.0</title>
+      <pubDate>Tue, 28 Apr 2026 06:17:00 +0000</pubDate>
+      <sparkle:version>10</sparkle:version>
+      <sparkle:shortVersionString>0.4.0</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <description><![CDATA[<h2>What's new in 0.4.0</h2><ul><li>Speaker diarization — automatically identify and label different speakers in your meeting transcripts</li><li>Multi-speaker transcription with per-speaker timestamps</li><li>Speaker information included in AI summaries</li><li>Enable diarization in Settings with configurable speaker count</li></ul>]]></description>
+      <enclosure
+        url="https://github.com/dep/synapse-meetings/releases/download/0.4.0/SynapseMeetings-0.4.0.dmg"
+        sparkle:edSignature="P5CRUnqcQfAhKm27WlIee2am7tuLlxbhHJ1IICuTbumSUJmzn6bLEn+XTJK/+XR4I1Z8tIAShjiclf53J4ZtAQ=="
+        length="5822384"
+        type="application/octet-stream" />
+    </item>
+    <item>
       <title>Version 0.3.0</title>
       <pubDate>Tue, 28 Apr 2026 05:58:00 +0000</pubDate>
       <sparkle:version>9</sparkle:version>
