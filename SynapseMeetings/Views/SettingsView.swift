@@ -231,6 +231,24 @@ struct SettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+
+            if GlobalHotkeyService.shared.needsAccessibilityPermission {
+                Section {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Label("Accessibility access required for global shortcut", systemImage: "exclamationmark.triangle.fill")
+                            .font(.callout.weight(.medium))
+                            .foregroundStyle(.orange)
+                        Text("The shortcut only fires when Synapse Meetings is in the foreground until you grant Accessibility access. macOS requires this to listen for keys while another app is active.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Button("Grant Accessibility Access…") {
+                            GlobalHotkeyService.shared.requestAccessibilityPermissionIfNeeded()
+                        }
+                        .buttonStyle(.bordered)
+                    }
+                    .padding(.vertical, 4)
+                }
+            }
         }
         .formStyle(.grouped)
         .padding()

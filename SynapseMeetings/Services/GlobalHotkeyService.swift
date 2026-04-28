@@ -9,15 +9,45 @@ final class GlobalHotkeyService: ObservableObject {
 
     /// Published so views can display the current shortcut.
     @Published private(set) var keyCombo: KeyCombo?
+    /// True when a global hotkey is configured but Accessibility access is missing.
+    @Published private(set) var needsAccessibilityPermission: Bool = false
 
     var onToggleRecording: (() -> Void)?
 
     private var globalMonitor: Any?
     private var localMonitor: Any?
+    private var accessibilityPollTimer: Timer?
 
     private init() {
         keyCombo = KeyCombo.load()
         registerMonitors()
+        // If a hotkey is set but we don't have access yet, prompt immediately on launch.
+        if keyCombo != nil && !AXIsProcessTrusted() {
+            promptForAccessibility()
+        }
+    }
+
+    /// Triggers the macOS system permission dialog and polls until access is granted.
+    func requestAccessibilityPermissionIfNeeded() {
+        promptForAccessibility()
+    }
+
+    private func promptForAccessibility() {
+        let options: NSDictionary = [kAXTrustedCheckOptionPrompt.takeRetainedValue(): true]
+        AXIsProcessTrustedWithOptions(options)
+        startPollingForAccessibility()
+    }
+
+    /// Poll every second until Accessibility is granted, then re-register monitors.
+    private func startPollingForAccessibility() {
+        accessibilityPollTimer?.invalidate()
+        accessibilityPollTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+            if AXIsProcessTrusted() {
+                self?.accessibilityPollTimer?.invalidate()
+                self?.accessibilityPollTimer = nil
+                self?.registerMonitors()
+            }
+        }
     }
 
     // MARK: - Public
@@ -34,7 +64,10 @@ final class GlobalHotkeyService: ObservableObject {
         if let g = globalMonitor { NSEvent.removeMonitor(g); globalMonitor = nil }
         if let l = localMonitor  { NSEvent.removeMonitor(l); localMonitor  = nil }
 
-        guard let combo = keyCombo else { return }
+        guard let combo = keyCombo else {
+            needsAccessibilityPermission = false
+            return
+        }
 
         let handler: (NSEvent) -> Void = { [weak self] event in
             guard event.keyCode == combo.keyCode,
@@ -44,7 +77,10 @@ final class GlobalHotkeyService: ObservableObject {
         }
 
         // Global monitor fires when the app is in the background.
+        // Requires Accessibility permission — AXIsProcessTrusted() is the reliable check.
         globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown, handler: handler)
+        needsAccessibilityPermission = !AXIsProcessTrusted()
+
         // Local monitor fires when the app is focused (prevents the key from also triggering other bindings).
         localMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
             guard event.keyCode == combo.keyCode,
