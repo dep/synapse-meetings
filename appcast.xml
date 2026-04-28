@@ -6,6 +6,19 @@
     <description>Most recent changes with links to updates.</description>
     <language>en</language>
     <item>
+      <title>Version 0.1.7</title>
+      <pubDate>Tue, 28 Apr 2026 05:36:00 +0000</pubDate>
+      <sparkle:version>8</sparkle:version>
+      <sparkle:shortVersionString>0.1.7</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <description><![CDATA[<h2>What's new in 0.1.7</h2><ul><li>New Attendees sidebar during recording — quickly add, edit, and manage meeting participants while you record</li><li>Selected attendees are sent to Claude and formatted with [[brackets]] for Obsidian-style wiki links</li><li>Manually-specified attendees take priority over names inferred from the transcript</li></ul>]]></description>
+      <enclosure
+        url="https://github.com/dep/synapse-meetings/releases/download/0.1.7/SynapseMeetings-0.1.7.dmg"
+        sparkle:edSignature="3yBbRi9zkbMDWeG6lYFDukfAC3wz4fvXyjQ5lnYndavCG/9tJALp1KdnqybCihmKykuIibtk/6jxV0damecNCg=="
+        length="5634545"
+        type="application/octet-stream" />
+    </item>
+    <item>
       <title>Version 0.1.6</title>
       <pubDate>Mon, 27 Apr 2026 16:58:00 +0000</pubDate>
       <sparkle:version>7</sparkle:version>
