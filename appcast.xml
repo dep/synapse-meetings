@@ -6,6 +6,19 @@
     <description>Most recent changes with links to updates.</description>
     <language>en</language>
     <item>
+      <title>Version 0.4.1</title>
+      <pubDate>Tue, 28 Apr 2026 15:12:00 +0000</pubDate>
+      <sparkle:version>11</sparkle:version>
+      <sparkle:shortVersionString>0.4.1</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <description><![CDATA[<h2>What's new in 0.4.1</h2><ul><li>Fixed global hotkey not firing when the app is in the background — now prompts for Accessibility permission on launch and re-registers the monitor automatically once granted</li></ul>]]></description>
+      <enclosure
+        url="https://github.com/dep/synapse-meetings/releases/download/0.4.1/SynapseMeetings-0.4.1.dmg"
+        sparkle:edSignature="X7Zz39j1OUQyKsXYuNmeTCxN91H75fYaxqHaQSupECiFmgmGbvzfL/maXJ3BsG3a34rGVwPGommMqkFUQdfkBQ=="
+        length="5829506"
+        type="application/octet-stream" />
+    </item>
+    <item>
       <title>Version 0.4.0</title>
       <pubDate>Tue, 28 Apr 2026 10:54:54 +0000</pubDate>
       <sparkle:version>10</sparkle:version>
