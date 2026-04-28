@@ -1,12 +1,14 @@
 import Foundation
 import SwiftUI
 import Combine
+import FluidAudio
 
 @MainActor
 final class AppState: ObservableObject {
     let store = RecordingStore()
     let recorder = AudioRecorder()
     let transcriber = TranscriptionService()
+    let diarizer = DiarizationService()
     let calendar = CalendarService()
     let audioDevices = AudioDeviceService()
 
@@ -33,6 +35,7 @@ final class AppState: ObservableObject {
     @AppStorage("anthropicModel") var anthropicModel: String = AnthropicService.defaultModel
     @AppStorage("prefillAttendeesFromCalendar") var prefillAttendeesFromCalendar: Bool = false
     @AppStorage("audioInputDeviceUID") var audioInputDeviceUID: String = ""
+    @AppStorage("diarizationEnabled") var diarizationEnabled: Bool = true
 
     private var cancellables: Set<AnyCancellable> = []
 
@@ -46,6 +49,9 @@ final class AppState: ObservableObject {
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
         transcriber.objectWillChange
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &cancellables)
+        diarizer.objectWillChange
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
         calendar.objectWillChange
@@ -62,6 +68,15 @@ final class AppState: ObservableObject {
         // as the user grants access.
         Task { [weak self] in
             await self?.calendar.requestAccess()
+        }
+
+        // Pre-warm the diarization model so the first recording's pipeline
+        // doesn't pay the download/compile cost in-band.
+        Task { [weak self] in
+            guard let self else { return }
+            if self.diarizationEnabled {
+                try? await self.diarizer.ensureLoaded()
+            }
         }
     }
 
@@ -215,15 +230,38 @@ final class AppState: ObservableObject {
     private func executePipeline(id: Recording.ID) async {
         guard var recording = store.recordings.first(where: { $0.id == id }) else { return }
 
-        // Transcribe
+        // Transcribe + diarize (in parallel when both are needed)
         if recording.transcript.isEmpty {
             do {
                 recording.status = .transcribing
                 store.upsert(recording)
                 let audioURL = store.audioURL(for: recording)
-                let transcript = try await transcriber.transcribe(fileAt: audioURL)
-                recording.transcript = transcript
-                store.upsert(recording)
+                let runDiarization = diarizationEnabled
+
+                if runDiarization {
+                    // Speaker count hint: number of currently-checked attendees, if any.
+                    let hintedSpeakerCount = recording.attendees.filter { $0.selected }.count
+                    async let asrTask = transcriber.transcribeWithTimings(fileAt: audioURL)
+                    async let diarizeTask: [TimedSpeakerSegment]? = (try? await diarizer.diarize(
+                        fileAt: audioURL,
+                        numSpeakers: hintedSpeakerCount > 1 ? hintedSpeakerCount : -1
+                    ))
+                    let asrResult = try await asrTask
+                    let segments = await diarizeTask
+
+                    recording.transcript = asrResult.text
+                    if let segments, let timings = asrResult.tokenTimings, !timings.isEmpty {
+                        recording.speakerTurns = Self.alignTokensToSpeakers(
+                            tokens: timings,
+                            segments: segments
+                        )
+                    }
+                    store.upsert(recording)
+                } else {
+                    let transcript = try await transcriber.transcribe(fileAt: audioURL)
+                    recording.transcript = transcript
+                    store.upsert(recording)
+                }
             } catch {
                 recording.status = .failed
                 recording.lastError = "Transcription failed: \(error.localizedDescription)"
@@ -244,10 +282,18 @@ final class AppState: ObservableObject {
                     .filter { $0.selected }
                     .map { $0.name.trimmingCharacters(in: .whitespacesAndNewlines) }
                     .filter { !$0.isEmpty }
+
+                // When we have speaker turns, feed Claude the speaker-labeled version.
+                // Otherwise, fall back to the raw transcript.
+                let transcriptForClaude: String = recording.speakerTurns.isEmpty
+                    ? recording.transcript
+                    : Self.formatSpeakerTurns(recording.speakerTurns)
+
                 let summaryOnly = try await anthropic.summarize(
-                    transcript: recording.transcript,
+                    transcript: transcriptForClaude,
                     liveNotes: recording.liveNotes,
                     attendees: selectedAttendees,
+                    speakerLabeled: !recording.speakerTurns.isEmpty,
                     suggestedTitle: nil
                 )
                 let trimmedNotes = recording.liveNotes.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -258,6 +304,9 @@ final class AppState: ObservableObject {
                 \(trimmedNotes)
 
                 """
+                let transcriptSection = recording.speakerTurns.isEmpty
+                    ? recording.transcript
+                    : Self.formatSpeakerTurns(recording.speakerTurns)
                 let combined = """
                 \(summaryOnly.trimmingCharacters(in: .whitespacesAndNewlines))
                 \(notesSection)
@@ -265,7 +314,7 @@ final class AppState: ObservableObject {
 
                 ## Raw transcript
 
-                \(recording.transcript)
+                \(transcriptSection)
                 """
                 recording.summaryMarkdown = combined
                 if let extracted = Self.extractTitle(from: summaryOnly), !extracted.isEmpty {
@@ -299,5 +348,99 @@ final class AppState: ObservableObject {
             }
         }
         return nil
+    }
+
+    // MARK: - Diarization alignment
+
+    /// Walks ASR token timings + diarized speaker segments and produces speaker turns.
+    /// Each token's midpoint is bucketed into the speaker segment that contains it
+    /// (or the nearest one). Consecutive same-speaker tokens are joined into runs,
+    /// with SentencePiece pieces (▁-prefixed) reassembled back into words.
+    static func alignTokensToSpeakers(
+        tokens: [TokenTiming],
+        segments: [TimedSpeakerSegment]
+    ) -> [SpeakerTurn] {
+        guard !tokens.isEmpty, !segments.isEmpty else { return [] }
+
+        // Stable, presentation-friendly speaker labels: order by first appearance.
+        var labelMap: [String: String] = [:]
+        var nextSpeakerNumber = 1
+        func labelFor(_ rawId: String) -> String {
+            if let existing = labelMap[rawId] { return existing }
+            let label = "Speaker \(nextSpeakerNumber)"
+            nextSpeakerNumber += 1
+            labelMap[rawId] = label
+            return label
+        }
+
+        // Sort segments by start time so the linear walker below stays valid.
+        let sortedSegments = segments.sorted { $0.startTimeSeconds < $1.startTimeSeconds }
+
+        var turns: [SpeakerTurn] = []
+        var currentLabel: String? = nil
+        var currentStart: Double = 0
+        var currentEnd: Double = 0
+        var currentPieces: [String] = []
+        var segIdx = 0
+
+        func flushCurrent() {
+            guard let label = currentLabel else { return }
+            let text = decodePieces(currentPieces)
+            if !text.isEmpty {
+                turns.append(SpeakerTurn(
+                    speakerLabel: label,
+                    startSec: currentStart,
+                    endSec: currentEnd,
+                    text: text
+                ))
+            }
+            currentLabel = nil
+            currentPieces.removeAll(keepingCapacity: true)
+        }
+
+        for token in tokens {
+            let mid = (token.startTime + token.endTime) / 2
+            // Advance segment cursor past any segments fully behind us.
+            while segIdx + 1 < sortedSegments.count,
+                  Double(sortedSegments[segIdx + 1].startTimeSeconds) <= mid {
+                segIdx += 1
+            }
+            let seg = sortedSegments[segIdx]
+            let label = labelFor(seg.speakerId)
+
+            if label == currentLabel {
+                currentPieces.append(token.token)
+                currentEnd = token.endTime
+            } else {
+                flushCurrent()
+                currentLabel = label
+                currentStart = token.startTime
+                currentEnd = token.endTime
+                currentPieces = [token.token]
+            }
+        }
+        flushCurrent()
+
+        return turns
+    }
+
+    /// Reassemble SentencePiece tokens (where ▁ marks a word boundary) into normal text.
+    private static func decodePieces(_ pieces: [String]) -> String {
+        var out = ""
+        for piece in pieces {
+            if piece.hasPrefix("▁") {
+                if !out.isEmpty { out += " " }
+                out += String(piece.dropFirst())
+            } else {
+                out += piece
+            }
+        }
+        return out.trimmingCharacters(in: .whitespaces)
+    }
+
+    /// Render speaker turns in `Speaker N: …` format for the saved markdown
+    /// and the Claude prompt.
+    static func formatSpeakerTurns(_ turns: [SpeakerTurn]) -> String {
+        turns.map { "\($0.speakerLabel): \($0.text)" }.joined(separator: "\n\n")
     }
 }

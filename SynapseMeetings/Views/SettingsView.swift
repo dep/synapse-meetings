@@ -132,6 +132,13 @@ struct SettingsView: View {
                     .controlSize(.small)
                 }
             }
+
+            Section("Speaker diarization") {
+                Toggle("Identify individual speakers", isOn: $app.diarizationEnabled)
+                Text("Runs a separate speaker model after transcription so the saved transcript and summary attribute lines to Speaker 1, Speaker 2, etc. The model downloads once on first use (~25 MB).")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
         .formStyle(.grouped)
         .padding()

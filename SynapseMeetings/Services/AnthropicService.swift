@@ -49,6 +49,7 @@ struct AnthropicService {
         transcript: String,
         liveNotes: String = "",
         attendees: [String] = [],
+        speakerLabeled: Bool = false,
         suggestedTitle: String?
     ) async throws -> String {
         let systemPrompt = Self.systemPrompt
@@ -56,6 +57,7 @@ struct AnthropicService {
             transcript: transcript,
             liveNotes: liveNotes,
             attendees: attendees,
+            speakerLabeled: speakerLabeled,
             suggestedTitle: suggestedTitle
         )
 
@@ -118,8 +120,15 @@ struct AnthropicService {
         transcript: String,
         liveNotes: String,
         attendees: [String],
+        speakerLabeled: Bool,
         suggestedTitle: String?
     ) -> String {
+        let speakerBlock: String = speakerLabeled ? """
+
+        The transcript below has been diarized — each block is prefixed with `Speaker 1:`, `Speaker 2:`, etc., where the same number always refers to the same physical speaker. Use these labels in `## 💭 Quotes` (e.g. `> [[Sarah]] (Speaker 2): "…"`) and when attributing actions in `## ✅ Action Items`. If you can confidently map a `Speaker N` to one of the user-provided attendees by context (the speaker introduces themselves, others address them by name, or the user's notes name them), use the attendee's bracketed name in place of the generic label. When you can't tell, keep the `Speaker N` label rather than guessing.
+
+        """ : ""
+
         let notesBlock: String
         let trimmedNotes = liveNotes.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmedNotes.isEmpty {
@@ -187,7 +196,7 @@ struct AnthropicService {
         Include any particularly important or memorable statements that capture the essence of discussions. Omit this section if nothing notable.
 
         ---
-        \(attendeesBlock)\(notesBlock)
+        \(attendeesBlock)\(speakerBlock)\(notesBlock)
         Transcript:
         \"\"\"
         \(transcript)

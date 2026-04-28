@@ -104,6 +104,18 @@ final class TranscriptionService: ObservableObject {
         return try await Self.runTranscription(manager: asrManager, fileURL: url)
     }
 
+    /// Returns the full ASRResult including token timings, for downstream alignment
+    /// against speaker diarization. Used in the final pipeline (not the live-chunk path).
+    func transcribeWithTimings(fileAt url: URL) async throws -> ASRResult {
+        try await ensureLoaded()
+        guard let asrManager else {
+            throw NSError(domain: "TranscriptionService", code: -1,
+                          userInfo: [NSLocalizedDescriptionKey: "ASR manager not ready"])
+        }
+        var decoderState = TdtDecoderState.make()
+        return try await asrManager.transcribe(url, decoderState: &decoderState)
+    }
+
     private static func runTranscription(manager: AsrManager, fileURL: URL) async throws -> String {
         var decoderState = TdtDecoderState.make()
         let result = try await manager.transcribe(fileURL, decoderState: &decoderState)

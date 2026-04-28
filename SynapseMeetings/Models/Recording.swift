@@ -32,6 +32,16 @@ struct Attendee: Identifiable, Codable, Equatable, Hashable {
     }
 }
 
+/// One contiguous chunk of transcribed speech from a single speaker.
+/// `speakerLabel` is the diarizer's anonymous label (e.g. "Speaker 1"); the
+/// real attendee mapping happens in the summary prompt, not here.
+struct SpeakerTurn: Codable, Equatable, Hashable {
+    var speakerLabel: String
+    var startSec: Double
+    var endSec: Double
+    var text: String
+}
+
 struct Recording: Identifiable, Codable, Equatable, Hashable {
     let id: UUID
     var title: String
@@ -44,6 +54,7 @@ struct Recording: Identifiable, Codable, Equatable, Hashable {
     var status: RecordingStatus
     var lastError: String?
     var attendees: [Attendee]
+    var speakerTurns: [SpeakerTurn]
 
     var committedRepo: String?
     var committedBranch: String?
@@ -62,7 +73,8 @@ struct Recording: Identifiable, Codable, Equatable, Hashable {
         summaryMarkdown: String = "",
         status: RecordingStatus = .recording,
         lastError: String? = nil,
-        attendees: [Attendee] = []
+        attendees: [Attendee] = [],
+        speakerTurns: [SpeakerTurn] = []
     ) {
         self.id = id
         self.title = title
@@ -75,6 +87,7 @@ struct Recording: Identifiable, Codable, Equatable, Hashable {
         self.status = status
         self.lastError = lastError
         self.attendees = attendees
+        self.speakerTurns = speakerTurns
     }
 
     init(from decoder: Decoder) throws {
@@ -90,6 +103,7 @@ struct Recording: Identifiable, Codable, Equatable, Hashable {
         status = try c.decode(RecordingStatus.self, forKey: .status)
         lastError = try c.decodeIfPresent(String.self, forKey: .lastError)
         attendees = try c.decodeIfPresent([Attendee].self, forKey: .attendees) ?? []
+        speakerTurns = try c.decodeIfPresent([SpeakerTurn].self, forKey: .speakerTurns) ?? []
         committedRepo = try c.decodeIfPresent(String.self, forKey: .committedRepo)
         committedBranch = try c.decodeIfPresent(String.self, forKey: .committedBranch)
         committedPath = try c.decodeIfPresent(String.self, forKey: .committedPath)
