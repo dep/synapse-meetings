@@ -6,6 +6,19 @@
     <description>Most recent changes with links to updates.</description>
     <language>en</language>
     <item>
+      <title>Version 0.3.0</title>
+      <pubDate>Tue, 28 Apr 2026 05:58:00 +0000</pubDate>
+      <sparkle:version>9</sparkle:version>
+      <sparkle:shortVersionString>0.3.0</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <description><![CDATA[<h2>What's new in 0.3.0</h2><ul><li>New audio device selection — choose specific input and output devices for recording</li><li>Calendar integration — view today's events and auto-fill meeting titles from your calendar</li><li>Audio device picker in Settings</li><li>Calendar sidebar during recording for quick event selection</li></ul>]]></description>
+      <enclosure
+        url="https://github.com/dep/synapse-meetings/releases/download/0.3.0/SynapseMeetings-0.3.0.dmg"
+        sparkle:edSignature="tME0Vi1DDTCtm5F7A065Kz6lC9re0FGsi4n//9RfJ1BE0uINlkd83Y9cuJbcMsVQmbvo+2CkTMgKpYtNt2NeCw=="
+        length="5784386"
+        type="application/octet-stream" />
+    </item>
+    <item>
       <title>Version 0.1.7</title>
       <pubDate>Tue, 28 Apr 2026 05:36:00 +0000</pubDate>
       <sparkle:version>8</sparkle:version>
