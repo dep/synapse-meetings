@@ -22,6 +22,10 @@
 	<string>8</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>14.0</string>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>Synapse Meetings reads your calendar to show today's events alongside your recordings.</string>
+	<key>NSCalendarsUsageDescription</key>
+	<string>Synapse Meetings reads your calendar to show today's events alongside your recordings.</string>
 	<key>NSHumanReadableCopyright</key>
 	<string>© 2026 Synapse Meetings</string>
 	<key>NSMicrophoneUsageDescription</key>

@@ -7,6 +7,8 @@ final class AppState: ObservableObject {
     let store = RecordingStore()
     let recorder = AudioRecorder()
     let transcriber = TranscriptionService()
+    let calendar = CalendarService()
+    let audioDevices = AudioDeviceService()
 
     @Published var selectedRecordingID: Recording.ID?
     @Published var settingsOpenRequest = UUID()
@@ -16,6 +18,12 @@ final class AppState: ObservableObject {
     @Published private(set) var liveTranscript: String = ""
     @Published private(set) var recentAttendees: [String] = []
 
+    struct PendingRecordingPrefill {
+        var title: String?
+        var attendees: [Attendee]
+    }
+    private var pendingPrefill: PendingRecordingPrefill?
+
     private var liveTranscriptTask: Task<Void, Never>?
     private var lastChunkTranscriptLength = 0
 
@@ -23,6 +31,8 @@ final class AppState: ObservableObject {
     private static let recentAttendeesLimit = 100
 
     @AppStorage("anthropicModel") var anthropicModel: String = AnthropicService.defaultModel
+    @AppStorage("prefillAttendeesFromCalendar") var prefillAttendeesFromCalendar: Bool = false
+    @AppStorage("audioInputDeviceUID") var audioInputDeviceUID: String = ""
 
     private var cancellables: Set<AnyCancellable> = []
 
@@ -38,12 +48,21 @@ final class AppState: ObservableObject {
         transcriber.objectWillChange
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
+        calendar.objectWillChange
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &cancellables)
 
         GlobalHotkeyService.shared.onToggleRecording = { [weak self] in
             self?.toggleRecording()
         }
 
         loadRecentAttendees()
+
+        // Kick off calendar permission early so the sidebar fills in as soon
+        // as the user grants access.
+        Task { [weak self] in
+            await self?.calendar.requestAccess()
+        }
     }
 
     func toggleRecording() {
@@ -60,6 +79,14 @@ final class AppState: ObservableObject {
     }
 
     func requestNewRecording() {
+        pendingPrefill = nil
+        newRecordingRequest = UUID()
+    }
+
+    /// Begin a new recording pre-filled with metadata from a calendar event.
+    /// Pass `attendees` only when the user has opted into calendar-based attendee prefill.
+    func requestNewRecording(prefilledTitle: String?, prefilledAttendees: [Attendee] = []) {
+        pendingPrefill = PendingRecordingPrefill(title: prefilledTitle, attendees: prefilledAttendees)
         newRecordingRequest = UUID()
     }
 
@@ -72,11 +99,20 @@ final class AppState: ObservableObject {
         recorder.onChunk = { [weak self] chunkURL in
             self?.handleChunk(chunkURL)
         }
+        recorder.preferredInputDeviceUID = audioInputDeviceUID
         try recorder.start(writingTo: url)
+
+        let prefill = pendingPrefill
+        pendingPrefill = nil
+
+        let title = prefill?.title?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let resolvedTitle = (title?.isEmpty == false) ? title! : Self.suggestedTitle(for: Date())
+
         let recording = Recording(
-            title: Self.suggestedTitle(for: Date()),
+            title: resolvedTitle,
             audioFilename: url.lastPathComponent,
-            status: .recording
+            status: .recording,
+            attendees: prefill?.attendees ?? []
         )
         store.upsert(recording)
         selectedRecordingID = recording.id

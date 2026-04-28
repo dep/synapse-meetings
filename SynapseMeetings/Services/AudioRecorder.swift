@@ -1,5 +1,7 @@
 import Foundation
 import AVFoundation
+import CoreAudio
+import AudioToolbox
 import Combine
 
 @MainActor
@@ -30,10 +32,15 @@ final class AudioRecorder: ObservableObject {
     private var chunkTimer: Timer?
     private let chunkInterval: TimeInterval = 10
 
+    /// UID of the preferred input device. Empty / unresolvable means use the system default.
+    var preferredInputDeviceUID: String = ""
+
     func start(writingTo url: URL) throws {
         guard !isRecording else { return }
         lastError = nil
         outputURL = url
+
+        applyPreferredInputDevice()
 
         let input = engine.inputNode
         let inputFormat = input.outputFormat(forBus: 0)
@@ -209,5 +216,58 @@ final class AudioRecorder: ObservableObject {
     private func tickElapsed() {
         guard let startedAt else { return }
         elapsed = Date().timeIntervalSince(startedAt)
+    }
+
+    // MARK: - Input device selection
+
+    private func applyPreferredInputDevice() {
+        let uid = preferredInputDeviceUID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !uid.isEmpty else { return } // empty = system default; nothing to do.
+
+        guard let deviceID = audioDeviceID(forUID: uid) else {
+            NSLog("AudioRecorder: preferred input device UID '\(uid)' not currently connected — using system default")
+            return
+        }
+
+        guard let unit = engine.inputNode.audioUnit else {
+            NSLog("AudioRecorder: inputNode.audioUnit is nil; cannot override input device")
+            return
+        }
+
+        var id = deviceID
+        let status = AudioUnitSetProperty(
+            unit,
+            kAudioOutputUnitProperty_CurrentDevice,
+            kAudioUnitScope_Global,
+            0,
+            &id,
+            UInt32(MemoryLayout<AudioDeviceID>.size)
+        )
+        if status != noErr {
+            NSLog("AudioRecorder: AudioUnitSetProperty(CurrentDevice) failed (status \(status)) — using system default")
+        }
+    }
+
+    private func audioDeviceID(forUID uid: String) -> AudioDeviceID? {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyTranslateUIDToDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var cfUID = uid as CFString
+        var deviceID = AudioDeviceID(0)
+        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+        let status = withUnsafeMutablePointer(to: &cfUID) { uidPtr -> OSStatus in
+            AudioObjectGetPropertyData(
+                AudioObjectID(kAudioObjectSystemObject),
+                &address,
+                UInt32(MemoryLayout<CFString>.size),
+                uidPtr,
+                &size,
+                &deviceID
+            )
+        }
+        guard status == noErr, deviceID != 0 else { return nil }
+        return deviceID
     }
 }
