@@ -6,6 +6,19 @@
     <description>Most recent changes with links to updates.</description>
     <language>en</language>
     <item>
+      <title>Version 0.4.2</title>
+      <pubDate>Wed, 29 Apr 2026 12:45:00 +0000</pubDate>
+      <sparkle:version>12</sparkle:version>
+      <sparkle:shortVersionString>0.4.2</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <description><![CDATA[<h2>What's new in 0.4.2</h2><ul><li>Meeting notes — take and edit notes tied to each recording</li><li>Find & replace in transcripts and notes</li><li>Search within the recordings list</li><li>Editable AI prompts — customize how summaries are generated</li></ul>]]></description>
+      <enclosure
+        url="https://github.com/dep/synapse-meetings/releases/download/0.4.2/SynapseMeetings-0.4.2.dmg"
+        sparkle:edSignature="3auYDjRh2N5nhvYoQDC1ZUQ6fYzbOD4DKdE+d2w/6quUmGvO8qG+KioFGFhQCGu3HJ2EJh/ptf7LjnIo6I+3AA=="
+        length="5953141"
+        type="application/octet-stream" />
+    </item>
+    <item>
       <title>Version 0.4.1</title>
       <pubDate>Tue, 28 Apr 2026 15:12:00 +0000</pubDate>
       <sparkle:version>11</sparkle:version>
