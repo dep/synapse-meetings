@@ -1,5 +1,9 @@
 import SwiftUI
 
+extension Notification.Name {
+    static let flushPendingEdits = Notification.Name("SynapseMeetings.flushPendingEdits")
+}
+
 struct CommitSidebarView: View {
     @EnvironmentObject var app: AppState
     let recording: Recording
@@ -415,8 +419,17 @@ struct CommitSidebarView: View {
         errorMessage = nil
         successURL = nil
         isCommitting = true
+
+        // Flush any unsaved edits in the note editor before committing.
+        NotificationCenter.default.post(
+            name: .flushPendingEdits,
+            object: nil,
+            userInfo: ["recordingID": recording.id]
+        )
+        let latest = app.store.recordings.first(where: { $0.id == recording.id }) ?? recording
+
         let cleanPath = commitPath
-        let contents = recording.summaryMarkdown
+        let contents = latest.summaryMarkdown
         let message = commitMessage
         let repo = selectedRepo
         let branch = selectedBranch
@@ -433,7 +446,7 @@ struct CommitSidebarView: View {
                 await MainActor.run {
                     self.successURL = result.htmlURL
                     self.isCommitting = false
-                    var updated = recording
+                    var updated = app.store.recordings.first(where: { $0.id == recording.id }) ?? recording
                     updated.status = .committed
                     updated.committedRepo = repo
                     updated.committedBranch = branch

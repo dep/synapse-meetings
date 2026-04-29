@@ -33,7 +33,7 @@ struct RecordButton: View {
                 }
             }
             .buttonStyle(.bordered)
-            .help("Start recording (⌘N)")
+            .help("Start recording (⌘R)")
         }
     }
 

@@ -50,15 +50,18 @@ struct AnthropicService {
         liveNotes: String = "",
         attendees: [String] = [],
         speakerLabeled: Bool = false,
-        suggestedTitle: String?
+        suggestedTitle: String?,
+        systemPromptOverride: String? = nil,
+        userPromptTemplateOverride: String? = nil
     ) async throws -> String {
-        let systemPrompt = Self.systemPrompt
-        let userPrompt = Self.userPrompt(
+        let systemPrompt = (systemPromptOverride?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 } ?? Self.defaultSystemPrompt
+        let template = (userPromptTemplateOverride?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 } ?? Self.defaultUserPromptTemplate
+        let userPrompt = Self.renderUserPrompt(
+            template: template,
             transcript: transcript,
             liveNotes: liveNotes,
             attendees: attendees,
-            speakerLabeled: speakerLabeled,
-            suggestedTitle: suggestedTitle
+            speakerLabeled: speakerLabeled
         )
 
         let body: [String: Any] = [
@@ -108,7 +111,7 @@ struct AnthropicService {
         }
     }
 
-    private static let systemPrompt = """
+    static let defaultSystemPrompt = """
     You are a meticulous note-taker that turns raw meeting transcripts into clean, scannable Markdown summaries.
     Always respond with ONLY the Markdown summary — no preamble, no code fences around the whole document.
     Follow the structure exactly. If a section has no content, write `_None_` under it rather than omitting the section.
@@ -116,12 +119,62 @@ struct AnthropicService {
     The first line MUST be a single H1 heading (`# Title Here`) with a SHORT (3–8 words), specific, descriptive title that captures what the meeting was actually about. Examples of good titles: `# Q3 Roadmap Sync`, `# Hiring Loop Debrief — Sarah`, `# Auth Migration Kickoff`. Do NOT use generic titles like `# Recording`, `# Meeting Notes`, `# Audio Test`, or anything containing a date — the date is already tracked separately. If the transcript is too short or contains no meaningful content (e.g. just a mic test), use `# Brief Audio Note`.
     """
 
-    private static func userPrompt(
+    /// Default user-prompt template. Edit-friendly: placeholders below are
+    /// substituted at runtime. Placeholders that map to nothing become empty.
+    ///
+    ///   {{ATTENDEES_BLOCK}} — instructions + bullet list of attendees, or empty.
+    ///   {{SPEAKERS_BLOCK}}  — diarization instructions, or empty.
+    ///   {{NOTES_BLOCK}}     — the user's live notes block, or empty.
+    ///   {{TRANSCRIPT}}      — the raw transcript (always provided).
+    static let defaultUserPromptTemplate = """
+    Generate a Markdown meeting summary from the transcript below using EXACTLY this structure:
+
+    # <title>
+
+    <one-paragraph summary of the recording>
+
+    ## 👥 Participants
+
+    - <participant 1>
+    - <participant 2>
+
+    ## 🎯 Key Points
+
+    - Topic 1: brief description and key points
+    - Topic 2: brief description and key points
+
+    ## ✅ Action Items
+
+    - Action item 1
+    - Action item 2
+
+    ## ❓ Open Questions
+
+    - Question 1
+    - Question 2
+
+    ## ⏭️ Next Steps
+
+    Summarize what happens next and any upcoming meetings or deadlines mentioned.
+
+    ## 💭 Quotes
+
+    Include any particularly important or memorable statements that capture the essence of discussions. Omit this section if nothing notable.
+
+    ---
+    {{ATTENDEES_BLOCK}}{{SPEAKERS_BLOCK}}{{NOTES_BLOCK}}
+    Transcript:
+    \"\"\"
+    {{TRANSCRIPT}}
+    \"\"\"
+    """
+
+    private static func renderUserPrompt(
+        template: String,
         transcript: String,
         liveNotes: String,
         attendees: [String],
-        speakerLabeled: Bool,
-        suggestedTitle: String?
+        speakerLabeled: Bool
     ) -> String {
         let speakerBlock: String = speakerLabeled ? """
 
@@ -144,6 +197,7 @@ struct AnthropicService {
 
             """
         }
+
         let attendeesBlock: String
         if attendees.isEmpty {
             attendeesBlock = ""
@@ -160,47 +214,11 @@ struct AnthropicService {
 
             """
         }
-        return """
-        Generate a Markdown meeting summary from the transcript below using EXACTLY this structure:
 
-        # <title>
-
-        <one-paragraph summary of the recording>
-
-        ## 👥 Participants
-
-        - <participant 1>
-        - <participant 2>
-
-        ## 🎯 Key Points
-
-        - Topic 1: brief description and key points
-        - Topic 2: brief description and key points
-
-        ## ✅ Action Items
-
-        - Action item 1
-        - Action item 2
-
-        ## ❓ Open Questions
-
-        - Question 1
-        - Question 2
-
-        ## ⏭️ Next Steps
-
-        Summarize what happens next and any upcoming meetings or deadlines mentioned.
-
-        ## 💭 Quotes
-
-        Include any particularly important or memorable statements that capture the essence of discussions. Omit this section if nothing notable.
-
-        ---
-        \(attendeesBlock)\(speakerBlock)\(notesBlock)
-        Transcript:
-        \"\"\"
-        \(transcript)
-        \"\"\"
-        """
+        return template
+            .replacingOccurrences(of: "{{ATTENDEES_BLOCK}}", with: attendeesBlock)
+            .replacingOccurrences(of: "{{SPEAKERS_BLOCK}}", with: speakerBlock)
+            .replacingOccurrences(of: "{{NOTES_BLOCK}}", with: notesBlock)
+            .replacingOccurrences(of: "{{TRANSCRIPT}}", with: transcript)
     }
 }

@@ -20,10 +20,15 @@ struct SynapseMeetingsApp: App {
         .windowToolbarStyle(.unified(showsTitle: true))
         .commands {
             CommandGroup(replacing: .newItem) {
+                Button("New Note") {
+                    appState.createNewNote()
+                }
+                .keyboardShortcut("n", modifiers: [.command])
+
                 Button("New Recording") {
                     appState.requestNewRecording()
                 }
-                .keyboardShortcut("n", modifiers: [.command])
+                .keyboardShortcut("r", modifiers: [.command])
             }
             CommandGroup(after: .appInfo) {
                 Button("Check for Updates…") {

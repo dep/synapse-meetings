@@ -90,6 +90,10 @@ struct Recording: Identifiable, Codable, Equatable, Hashable {
         self.speakerTurns = speakerTurns
     }
 
+    /// Notes created via "+ Note" have no audio file. Used to drive sidebar
+    /// affordances (icon, list-row layout) without changing status semantics.
+    var isNote: Bool { audioFilename.isEmpty }
+
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decode(UUID.self, forKey: .id)

@@ -22,8 +22,8 @@ struct SettingsView: View {
         TabView {
             apiKeysTab
                 .tabItem { Label("API Keys", systemImage: "key.fill") }
-            modelTab
-                .tabItem { Label("Model", systemImage: "sparkles") }
+            aiTab
+                .tabItem { Label("AI", systemImage: "sparkles") }
             audioTab
                 .tabItem { Label("Audio", systemImage: "mic.fill") }
             calendarTab
@@ -33,7 +33,7 @@ struct SettingsView: View {
             aboutTab
                 .tabItem { Label("About", systemImage: "info.circle") }
         }
-        .frame(width: 520, height: 420)
+        .frame(width: 720, height: 620)
         .onAppear { reload() }
     }
 
@@ -78,22 +78,102 @@ struct SettingsView: View {
         .padding()
     }
 
-    private var modelTab: some View {
-        Form {
-            Section("Summarization model") {
-                Picker("Model", selection: $app.anthropicModel) {
-                    ForEach(availableModels, id: \.self) { id in
-                        Text(id).tag(id)
+    private var aiTab: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                // Model picker
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Summarization model")
+                        .font(.headline)
+                    HStack {
+                        Picker("", selection: $app.anthropicModel) {
+                            ForEach(availableModels, id: \.self) { id in
+                                Text(id).tag(id)
+                            }
+                        }
+                        .labelsHidden()
+                        .pickerStyle(.menu)
+                        .frame(maxWidth: 280)
+                        Spacer()
                     }
+                    Text("Sonnet 4.6 is a great default. Opus is smartest. Haiku is fastest and cheapest.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
-                .pickerStyle(.menu)
-                Text("Sonnet 4.6 is a great default. Opus is smartest. Haiku is fastest and cheapest.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+
+                Divider()
+
+                // User prompt template editor
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        Text("User instructions")
+                            .font(.headline)
+                        Spacer()
+                        Button("Reset to default") {
+                            app.anthropicUserPromptTemplate = AnthropicService.defaultUserPromptTemplate
+                        }
+                        .controlSize(.small)
+                        .disabled(effectiveUserPromptTemplate == AnthropicService.defaultUserPromptTemplate)
+                    }
+                    Text("The body of the user message. Controls the summary's structure (headings, sections). The placeholders below are substituted at runtime — keep them in your template.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    placeholderLegend
+                        .padding(.top, 2)
+
+                    TextEditor(text: userPromptTemplateBinding)
+                        .font(.system(.body, design: .monospaced))
+                        .frame(minHeight: 280, maxHeight: 380)
+                        .scrollContentBackground(.hidden)
+                        .padding(8)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .fill(Color(nsColor: .textBackgroundColor))
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .stroke(Color.secondary.opacity(0.3), lineWidth: 0.5)
+                        )
+                }
+            }
+            .padding(20)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private var placeholderLegend: some View {
+        HStack(spacing: 6) {
+            ForEach([
+                "{{ATTENDEES_BLOCK}}",
+                "{{SPEAKERS_BLOCK}}",
+                "{{NOTES_BLOCK}}",
+                "{{TRANSCRIPT}}"
+            ], id: \.self) { token in
+                Text(token)
+                    .font(.system(size: 10, design: .monospaced))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(
+                        Capsule().fill(Color.secondary.opacity(0.15))
+                    )
             }
         }
-        .formStyle(.grouped)
-        .padding()
+    }
+
+    private var effectiveUserPromptTemplate: String {
+        let trimmed = app.anthropicUserPromptTemplate.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? AnthropicService.defaultUserPromptTemplate : app.anthropicUserPromptTemplate
+    }
+
+    private var userPromptTemplateBinding: Binding<String> {
+        Binding(
+            get: {
+                app.anthropicUserPromptTemplate.isEmpty
+                    ? AnthropicService.defaultUserPromptTemplate
+                    : app.anthropicUserPromptTemplate
+            },
+            set: { app.anthropicUserPromptTemplate = $0 }
+        )
     }
 
     private var audioTab: some View {

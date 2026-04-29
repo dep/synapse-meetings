@@ -94,7 +94,7 @@ private struct EmptyDetailView: View {
             Text("No recording selected")
                 .font(.title2)
                 .foregroundStyle(.secondary)
-            Text("Hit ⌘N to record a new one.")
+            Text("Hit ⌘N for a new note, or ⌘R to record.")
                 .font(.callout)
                 .foregroundStyle(.tertiary)
         }

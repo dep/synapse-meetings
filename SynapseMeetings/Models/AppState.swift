@@ -33,6 +33,8 @@ final class AppState: ObservableObject {
     private static let recentAttendeesLimit = 100
 
     @AppStorage("anthropicModel") var anthropicModel: String = AnthropicService.defaultModel
+    @AppStorage("anthropicSystemPrompt") var anthropicSystemPrompt: String = ""
+    @AppStorage("anthropicUserPromptTemplate") var anthropicUserPromptTemplate: String = ""
     @AppStorage("prefillAttendeesFromCalendar") var prefillAttendeesFromCalendar: Bool = false
     @AppStorage("audioInputDeviceUID") var audioInputDeviceUID: String = ""
     @AppStorage("diarizationEnabled") var diarizationEnabled: Bool = true
@@ -106,6 +108,31 @@ final class AppState: ObservableObject {
     }
 
     // MARK: - Pipeline
+
+    /// Create a blank note (no audio, no transcript) and select it. Useful for
+    /// jotting things down without the recording pipeline.
+    @discardableResult
+    func createNewNote() -> Recording {
+        let now = Date()
+        let title = "Note — \(Self.noteDateFormatter.string(from: now))"
+        let starter = "# \(title)\n\n"
+        let note = Recording(
+            title: title,
+            createdAt: now,
+            audioFilename: "",
+            summaryMarkdown: starter,
+            status: .ready
+        )
+        store.upsert(note)
+        selectedRecordingID = note.id
+        return note
+    }
+
+    private static let noteDateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "MMM d, yyyy 'at' h:mma"
+        return f
+    }()
 
     func startNewRecording() throws -> Recording {
         let url = store.newAudioURL()
@@ -207,6 +234,36 @@ final class AppState: ObservableObject {
         recentAttendees = saved
     }
 
+    /// Re-run the summarization step against the current note content, using
+    /// whatever user prompt the user has configured. For recordings, this uses
+    /// the saved transcript + live notes. For note-only entries, the current
+    /// summary text itself is fed back in as the "transcript" so the AI can
+    /// reformat / clean up free-form notes.
+    func resummarize(_ recording: Recording) {
+        var updated = recording
+        if updated.transcript.isEmpty {
+            // Note-only: feed the existing summary content back in so we have
+            // something for the AI to work with. We must flush the editor's
+            // pending edits first so the latest text actually makes it through.
+            NotificationCenter.default.post(
+                name: .flushPendingEdits,
+                object: nil,
+                userInfo: ["recordingID": recording.id]
+            )
+            // Re-fetch after the synchronous flush.
+            let latest = store.recordings.first(where: { $0.id == recording.id }) ?? recording
+            updated = latest
+            let body = latest.summaryMarkdown.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !body.isEmpty else { return }
+            updated.transcript = latest.summaryMarkdown
+        }
+        updated.summaryMarkdown = ""
+        updated.lastError = nil
+        updated.status = .summarizing
+        store.upsert(updated)
+        runPipeline(for: updated.id)
+    }
+
     func retry(_ recording: Recording) {
         var updated = recording
         updated.lastError = nil
@@ -294,7 +351,9 @@ final class AppState: ObservableObject {
                     liveNotes: recording.liveNotes,
                     attendees: selectedAttendees,
                     speakerLabeled: !recording.speakerTurns.isEmpty,
-                    suggestedTitle: nil
+                    suggestedTitle: nil,
+                    systemPromptOverride: anthropicSystemPrompt,
+                    userPromptTemplateOverride: anthropicUserPromptTemplate
                 )
                 let trimmedNotes = recording.liveNotes.trimmingCharacters(in: .whitespacesAndNewlines)
                 let notesSection = trimmedNotes.isEmpty ? "" : """

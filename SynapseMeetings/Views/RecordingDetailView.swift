@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 struct RecordingDetailView: View {
     @EnvironmentObject var app: AppState
@@ -7,6 +8,8 @@ struct RecordingDetailView: View {
     @State private var editedMarkdown: String = ""
     @State private var showRawTranscript: Bool = false
     @State private var didLoadInitial = false
+    @State private var findState = FindState()
+    @State private var showResummarizeConfirm: Bool = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -17,11 +20,20 @@ struct RecordingDetailView: View {
         .frame(minWidth: 460)
         .background(.background)
         .onAppear { loadEdits() }
-        .onChange(of: recording.id) { _, _ in loadEdits() }
+        .onChange(of: recording.id) { _, _ in
+            loadEdits()
+            findState.reset()
+        }
         .onChange(of: recording.summaryMarkdown) { _, _ in
             // If pipeline updates the summary, refresh the editor
             if recording.summaryMarkdown != editedMarkdown {
                 editedMarkdown = recording.summaryMarkdown
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .flushPendingEdits)) { note in
+            guard let id = note.userInfo?["recordingID"] as? UUID, id == recording.id else { return }
+            if editedMarkdown != recording.summaryMarkdown {
+                saveEdits()
             }
         }
     }
@@ -33,6 +45,16 @@ struct RecordingDetailView: View {
                 .font(.system(size: 15, weight: .semibold))
                 .lineLimit(1)
             Spacer()
+            if recording.status == .ready || recording.status == .committed {
+                Button {
+                    showResummarizeConfirm = true
+                } label: {
+                    Label("Summarize", systemImage: "sparkles")
+                        .font(.caption)
+                }
+                .buttonStyle(.bordered)
+                .help("Re-run the AI summary")
+            }
             if recording.status == .ready || recording.status == .committed {
                 Button {
                     saveEdits()
@@ -56,6 +78,18 @@ struct RecordingDetailView: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
         .background(.background)
+        .confirmationDialog(
+            "Re-summarize this meeting?",
+            isPresented: $showResummarizeConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Re-summarize", role: .destructive) {
+                app.resummarize(recording)
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This replaces the current summary with a fresh AI pass against the transcript. Any edits you've made to this note will be processed as well.")
+        }
     }
 
     @ViewBuilder
@@ -75,12 +109,33 @@ struct RecordingDetailView: View {
     }
 
     private var editor: some View {
-        TextEditor(text: $editedMarkdown)
-            .font(.system(.body, design: .monospaced))
+        VStack(spacing: 0) {
+            if findState.isVisible {
+                FindBar(state: $findState)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+            SearchableTextEditor(
+                text: $editedMarkdown,
+                findState: $findState
+            )
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
-            .scrollContentBackground(.hidden)
             .background(.background)
+        }
+        .animation(.easeInOut(duration: 0.15), value: findState.isVisible)
+        .onChange(of: findState.query) { _, _ in
+            findState.recompute(in: editedMarkdown)
+        }
+        .onChange(of: editedMarkdown) { _, newText in
+            if findState.isVisible && !findState.query.isEmpty {
+                findState.recompute(in: newText)
+            }
+        }
+        .onChange(of: findState.isVisible) { _, visible in
+            if visible && !findState.query.isEmpty {
+                findState.recompute(in: editedMarkdown)
+            }
+        }
     }
 
     @ViewBuilder
