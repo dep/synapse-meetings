@@ -6,6 +6,19 @@
     <description>Most recent changes with links to updates.</description>
     <language>en</language>
     <item>
+      <title>Version 0.4.4</title>
+      <pubDate>Wed, 30 Apr 2026 17:00:00 +0000</pubDate>
+      <sparkle:version>14</sparkle:version>
+      <sparkle:shortVersionString>0.4.4</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <description><![CDATA[<h2>What's new in 0.4.4</h2><ul><li>Fixed significant typing lag in the User Instructions editor in Settings</li></ul>]]></description>
+      <enclosure
+        url="https://github.com/dep/synapse-meetings/releases/download/0.4.4/SynapseMeetings-0.4.4.dmg"
+        sparkle:edSignature="UDa+2qpqTk856jEYGwhenNasV1nuh0E20C/dZ9J7KafMOBxa3BRFMgk07fal+K2VHyrxvH3N8vQnfFIRlMKRDQ=="
+        length="7468203"
+        type="application/octet-stream" />
+    </item>
+    <item>
       <title>Version 0.4.3</title>
       <pubDate>Thu, 30 Apr 2026 10:07:57 +0000</pubDate>
       <sparkle:version>13</sparkle:version>
