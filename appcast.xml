@@ -6,6 +6,19 @@
     <description>Most recent changes with links to updates.</description>
     <language>en</language>
     <item>
+      <title>Version 0.4.3</title>
+      <pubDate>Thu, 30 Apr 2026 10:07:57 +0000</pubDate>
+      <sparkle:version>13</sparkle:version>
+      <sparkle:shortVersionString>0.4.3</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <description><![CDATA[<h2>What's new in 0.4.3</h2><ul><li>Fixed search bar overlapping the first row in the recordings list</li><li>Calendar event title now used as the meeting title when recording starts from a calendar event</li><li>Attendees list now sorted alphabetically by first name</li></ul>]]></description>
+      <enclosure
+        url="https://github.com/dep/synapse-meetings/releases/download/0.4.3/SynapseMeetings-0.4.3.dmg"
+        sparkle:edSignature="1tTjL0W+s8c0qQDG/XifyFxfRclZcC17J/M7fRU0aewBFIsUvI2ks3g+P8g7oV2a61Jz1ORh1x3X4duixuZjDg=="
+        length="7452700"
+        type="application/octet-stream" />
+    </item>
+    <item>
       <title>Version 0.4.2</title>
       <pubDate>Wed, 29 Apr 2026 12:45:00 +0000</pubDate>
       <sparkle:version>12</sparkle:version>
