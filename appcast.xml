@@ -6,6 +6,19 @@
     <description>Most recent changes with links to updates.</description>
     <language>en</language>
     <item>
+      <title>Version 0.4.5</title>
+      <pubDate>Wed, 30 Apr 2026 18:00:00 +0000</pubDate>
+      <sparkle:version>15</sparkle:version>
+      <sparkle:shortVersionString>0.4.5</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <description><![CDATA[<h2>What's new in 0.4.5</h2><ul><li>Fixed a bug where committing a recording would use the original notes instead of your saved edits</li></ul>]]></description>
+      <enclosure
+        url="https://github.com/dep/synapse-meetings/releases/download/0.4.5/SynapseMeetings-0.4.5.dmg"
+        sparkle:edSignature="D+kGVhG/xSXE6BlE09fvcZn03VymQMCeC8X6PqYucaoASJf/59a/FQbRxxf+KGxLSg2vFDGrd0Zj5S8CBGNGDw=="
+        length="7468695"
+        type="application/octet-stream" />
+    </item>
+    <item>
       <title>Version 0.4.4</title>
       <pubDate>Wed, 30 Apr 2026 17:00:00 +0000</pubDate>
       <sparkle:version>14</sparkle:version>
