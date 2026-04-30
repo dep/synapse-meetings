@@ -30,7 +30,7 @@ struct AttendeesSidebarView: View {
                 out.append(name)
             }
         }
-        return out
+        return out.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
     }
 
     private var filteredNames: [String] {

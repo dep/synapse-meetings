@@ -56,6 +56,8 @@ struct Recording: Identifiable, Codable, Equatable, Hashable {
     var attendees: [Attendee]
     var speakerTurns: [SpeakerTurn]
 
+    var calendarEventTitle: String?
+
     var committedRepo: String?
     var committedBranch: String?
     var committedPath: String?
@@ -108,6 +110,7 @@ struct Recording: Identifiable, Codable, Equatable, Hashable {
         lastError = try c.decodeIfPresent(String.self, forKey: .lastError)
         attendees = try c.decodeIfPresent([Attendee].self, forKey: .attendees) ?? []
         speakerTurns = try c.decodeIfPresent([SpeakerTurn].self, forKey: .speakerTurns) ?? []
+        calendarEventTitle = try c.decodeIfPresent(String.self, forKey: .calendarEventTitle)
         committedRepo = try c.decodeIfPresent(String.self, forKey: .committedRepo)
         committedBranch = try c.decodeIfPresent(String.self, forKey: .committedBranch)
         committedPath = try c.decodeIfPresent(String.self, forKey: .committedPath)

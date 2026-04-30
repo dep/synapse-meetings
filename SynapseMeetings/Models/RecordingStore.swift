@@ -35,8 +35,12 @@ final class RecordingStore: ObservableObject {
         return d
     }()
 
-    init() {
-        baseDirectory = Self.baseDirectoryURL()
+    convenience init() {
+        self.init(baseDirectory: Self.baseDirectoryURL())
+    }
+
+    init(baseDirectory: URL) {
+        self.baseDirectory = baseDirectory
         metadataDirectory = baseDirectory.appendingPathComponent("recordings", isDirectory: true)
         audioDirectory = baseDirectory.appendingPathComponent("audio", isDirectory: true)
         try? fileManager.createDirectory(at: metadataDirectory, withIntermediateDirectories: true)

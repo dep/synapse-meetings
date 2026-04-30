@@ -221,4 +221,21 @@ struct AnthropicService {
             .replacingOccurrences(of: "{{NOTES_BLOCK}}", with: notesBlock)
             .replacingOccurrences(of: "{{TRANSCRIPT}}", with: transcript)
     }
+
+    // Exposed for unit testing only.
+    static func testRenderUserPrompt(
+        template: String,
+        transcript: String,
+        liveNotes: String,
+        attendees: [String],
+        speakerLabeled: Bool
+    ) -> String {
+        renderUserPrompt(
+            template: template,
+            transcript: transcript,
+            liveNotes: liveNotes,
+            attendees: attendees,
+            speakerLabeled: speakerLabeled
+        )
+    }
 }

@@ -22,6 +22,16 @@ packages:
   Sparkle:
     url: https://github.com/sparkle-project/Sparkle
     from: "2.6.4"
+schemes:
+  SynapseMeetings:
+    build:
+      targets:
+        SynapseMeetings: all
+        SynapseMeetingsTests: [test]
+    test:
+      targets:
+        - SynapseMeetingsTests
+
 targets:
   SynapseMeetings:
     type: application
@@ -64,8 +74,25 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         COMBINE_HIDPI_IMAGES: YES
         ENABLE_PREVIEWS: YES
+        ENABLE_TESTABILITY: YES
     dependencies:
       - package: FluidAudio
         product: FluidAudio
       - package: Sparkle
         product: Sparkle
+
+  SynapseMeetingsTests:
+    type: bundle.unit-test
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - path: SynapseMeetingsTests
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.synapsemeetings.tests
+        SWIFT_VERSION: "5.10"
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Synapse Meetings.app/Contents/MacOS/Synapse Meetings"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+    dependencies:
+      - target: SynapseMeetings
+        embed: false

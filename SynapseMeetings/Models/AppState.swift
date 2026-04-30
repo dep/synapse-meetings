@@ -150,12 +150,15 @@ final class AppState: ObservableObject {
         let title = prefill?.title?.trimmingCharacters(in: .whitespacesAndNewlines)
         let resolvedTitle = (title?.isEmpty == false) ? title! : Self.suggestedTitle(for: Date())
 
-        let recording = Recording(
+        var recording = Recording(
             title: resolvedTitle,
             audioFilename: url.lastPathComponent,
             status: .recording,
             attendees: prefill?.attendees ?? []
         )
+        if let calendarTitle = title {
+            recording.calendarEventTitle = calendarTitle
+        }
         store.upsert(recording)
         selectedRecordingID = recording.id
         return recording
@@ -376,7 +379,8 @@ final class AppState: ObservableObject {
                 \(transcriptSection)
                 """
                 recording.summaryMarkdown = combined
-                if let extracted = Self.extractTitle(from: summaryOnly), !extracted.isEmpty {
+                if recording.calendarEventTitle == nil,
+                   let extracted = Self.extractTitle(from: summaryOnly), !extracted.isEmpty {
                     recording.title = extracted
                 }
                 recording.status = .ready

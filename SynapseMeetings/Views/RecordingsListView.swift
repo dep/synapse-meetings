@@ -6,54 +6,56 @@ struct RecordingsListView: View {
     @State private var activeQuery: String = ""
 
     var body: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 6) {
-                NewRecordingButton()
-                NewNoteButton()
-                Spacer()
-            }
-            .padding(.horizontal, 8)
-            .padding(.top, 8)
-            .padding(.bottom, 6)
-
-            SearchField(text: $searchDraft, onSubmit: {
-                activeQuery = searchDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-            }, onClear: {
-                searchDraft = ""
-                activeQuery = ""
-            })
-            .padding(.horizontal, 8)
-            .padding(.bottom, 4)
-
-            List(selection: Binding(
-                get: { app.selectedRecordingID },
-                set: { app.selectedRecordingID = $0 }
-            )) {
-                let visible = filteredRecordings
-                if app.store.recordings.isEmpty {
-                    EmptyListPlaceholder()
-                        .listRowBackground(Color.clear)
-                        .listRowSeparator(.hidden)
-                } else if visible.isEmpty {
-                    NoMatchesPlaceholder(query: activeQuery)
-                        .listRowBackground(Color.clear)
-                        .listRowSeparator(.hidden)
-                } else {
-                    ForEach(visible) { recording in
-                        RecordingRow(recording: recording)
-                            .tag(recording.id as Recording.ID?)
-                            .contextMenu {
-                                Button("Delete", role: .destructive) {
-                                    app.store.delete(recording)
-                                    if app.selectedRecordingID == recording.id {
-                                        app.selectedRecordingID = nil
-                                    }
+        List(selection: Binding(
+            get: { app.selectedRecordingID },
+            set: { app.selectedRecordingID = $0 }
+        )) {
+            let visible = filteredRecordings
+            if app.store.recordings.isEmpty {
+                EmptyListPlaceholder()
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+            } else if visible.isEmpty {
+                NoMatchesPlaceholder(query: activeQuery)
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+            } else {
+                ForEach(visible) { recording in
+                    RecordingRow(recording: recording)
+                        .tag(recording.id as Recording.ID?)
+                        .contextMenu {
+                            Button("Delete", role: .destructive) {
+                                app.store.delete(recording)
+                                if app.selectedRecordingID == recording.id {
+                                    app.selectedRecordingID = nil
                                 }
                             }
-                    }
+                        }
                 }
             }
-            .listStyle(.sidebar)
+        }
+        .listStyle(.sidebar)
+        .safeAreaInset(edge: .top, spacing: 0) {
+            VStack(spacing: 0) {
+                HStack(spacing: 6) {
+                    NewRecordingButton()
+                    NewNoteButton()
+                    Spacer()
+                }
+                .padding(.horizontal, 8)
+                .padding(.top, 8)
+                .padding(.bottom, 6)
+
+                SearchField(text: $searchDraft, onSubmit: {
+                    activeQuery = searchDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+                }, onClear: {
+                    searchDraft = ""
+                    activeQuery = ""
+                })
+                .padding(.horizontal, 8)
+                .padding(.bottom, 8)
+            }
+            .background(.bar)
         }
         .navigationTitle("Recordings")
         .frame(minWidth: 240)
