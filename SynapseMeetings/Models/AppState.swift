@@ -32,12 +32,21 @@ final class AppState: ObservableObject {
     private static let recentAttendeesKey = "recentAttendees"
     private static let recentAttendeesLimit = 100
 
+    @AppStorage("llmProvider") var llmProviderRaw: String = LLMProvider.anthropic.rawValue
     @AppStorage("anthropicModel") var anthropicModel: String = AnthropicService.defaultModel
+    @AppStorage("openRouterModel") var openRouterModel: String = OpenRouterService.defaultModel
     @AppStorage("anthropicSystemPrompt") var anthropicSystemPrompt: String = ""
     @AppStorage("anthropicUserPromptTemplate") var anthropicUserPromptTemplate: String = ""
     @AppStorage("prefillAttendeesFromCalendar") var prefillAttendeesFromCalendar: Bool = false
     @AppStorage("audioInputDeviceUID") var audioInputDeviceUID: String = ""
     @AppStorage("diarizationEnabled") var diarizationEnabled: Bool = true
+
+    /// Computed accessor over `llmProviderRaw`. Falls back to Anthropic if a
+    /// previously-stored value is no longer recognized.
+    var llmProvider: LLMProvider {
+        get { LLMProvider(rawValue: llmProviderRaw) ?? .anthropic }
+        set { llmProviderRaw = newValue.rawValue }
+    }
 
     private var cancellables: Set<AnyCancellable> = []
 
@@ -335,22 +344,26 @@ final class AppState: ObservableObject {
             do {
                 recording.status = .summarizing
                 store.upsert(recording)
-                let anthropic = try AnthropicService.makeFromKeychain(model: anthropicModel)
+                let summarizer = try SummarizationFactory.make(
+                    provider: llmProvider,
+                    anthropicModel: anthropicModel,
+                    openRouterModel: openRouterModel
+                )
                 // Don't pass the placeholder "Recording — date" title as a suggestion —
-                // Claude tends to reuse it verbatim instead of inventing a real title.
+                // models tend to reuse it verbatim instead of inventing a real title.
                 let selectedAttendees = recording.attendees
                     .filter { $0.selected }
                     .map { $0.name.trimmingCharacters(in: .whitespacesAndNewlines) }
                     .filter { !$0.isEmpty }
 
-                // When we have speaker turns, feed Claude the speaker-labeled version.
+                // When we have speaker turns, feed the model the speaker-labeled version.
                 // Otherwise, fall back to the raw transcript.
-                let transcriptForClaude: String = recording.speakerTurns.isEmpty
+                let transcriptForModel: String = recording.speakerTurns.isEmpty
                     ? recording.transcript
                     : Self.formatSpeakerTurns(recording.speakerTurns)
 
-                let summaryOnly = try await anthropic.summarize(
-                    transcript: transcriptForClaude,
+                let summaryOnly = try await summarizer.summarize(
+                    transcript: transcriptForModel,
                     liveNotes: recording.liveNotes,
                     attendees: selectedAttendees,
                     speakerLabeled: !recording.speakerTurns.isEmpty,

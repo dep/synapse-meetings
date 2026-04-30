@@ -5,8 +5,10 @@ struct SettingsView: View {
     @EnvironmentObject var app: AppState
 
     @State private var anthropicKeyDraft: String = ""
+    @State private var openRouterKeyDraft: String = ""
     @State private var githubPATDraft: String = ""
     @State private var anthropicHasStored: Bool = false
+    @State private var openRouterHasStored: Bool = false
     @State private var githubHasStored: Bool = false
     @State private var saveError: String?
     @State private var savedFlash: Bool = false
@@ -46,7 +48,16 @@ struct SettingsView: View {
                     secretField(draft: $anthropicKeyDraft, hasStored: anthropicHasStored,
                                 placeholder: "sk-ant-…")
                 }
-                Text("Used to summarize transcripts. Stored in your macOS Keychain.")
+                Text("Used to summarize transcripts with Claude models. Stored in your macOS Keychain.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Section("OpenRouter") {
+                LabeledContent("API key") {
+                    secretField(draft: $openRouterKeyDraft, hasStored: openRouterHasStored,
+                                placeholder: "sk-or-v1-…")
+                }
+                Text("Free alternative for summarization with multilingual models like Gemma. Stored in your macOS Keychain.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -83,22 +94,53 @@ struct SettingsView: View {
     private var aiTab: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                // Model picker
+                // Provider picker
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Provider")
+                        .font(.headline)
+                    Picker("", selection: providerBinding) {
+                        ForEach(LLMProvider.allCases) { provider in
+                            Text(provider.displayName).tag(provider)
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.segmented)
+                    .frame(maxWidth: 320)
+                    Text("Anthropic uses paid Claude models. OpenRouter offers free multilingual models — needs an OpenRouter API key.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Divider()
+
+                // Model picker (per provider)
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Summarization model")
                         .font(.headline)
                     HStack {
-                        Picker("", selection: $app.anthropicModel) {
-                            ForEach(availableModels, id: \.self) { id in
-                                Text(id).tag(id)
+                        switch app.llmProvider {
+                        case .anthropic:
+                            Picker("", selection: $app.anthropicModel) {
+                                ForEach(availableModels, id: \.self) { id in
+                                    Text(id).tag(id)
+                                }
                             }
+                            .labelsHidden()
+                            .pickerStyle(.menu)
+                            .frame(maxWidth: 280)
+                        case .openrouter:
+                            Picker("", selection: $app.openRouterModel) {
+                                ForEach(OpenRouterService.curatedFreeModels, id: \.self) { id in
+                                    Text(id).tag(id)
+                                }
+                            }
+                            .labelsHidden()
+                            .pickerStyle(.menu)
+                            .frame(maxWidth: 320)
                         }
-                        .labelsHidden()
-                        .pickerStyle(.menu)
-                        .frame(maxWidth: 280)
                         Spacer()
                     }
-                    Text("Sonnet 4.6 is a great default. Opus is smartest. Haiku is fastest and cheapest.")
+                    Text(modelHelpText)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -168,6 +210,22 @@ struct SettingsView: View {
                         Capsule().fill(Color.secondary.opacity(0.15))
                     )
             }
+        }
+    }
+
+    private var providerBinding: Binding<LLMProvider> {
+        Binding(
+            get: { app.llmProvider },
+            set: { app.llmProvider = $0 }
+        )
+    }
+
+    private var modelHelpText: String {
+        switch app.llmProvider {
+        case .anthropic:
+            return "Sonnet 4.6 is a great default. Opus is smartest. Haiku is fastest and cheapest."
+        case .openrouter:
+            return "Free models. Gemma 4 31B is the recommended default — best multilingual coverage for English, Spanish, and Portuguese."
         }
     }
 
@@ -344,7 +402,7 @@ struct SettingsView: View {
             Text("Speech model: Parakeet TDT v3 via FluidAudio (runs locally on the Apple Neural Engine).")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            Text("Summarization: Anthropic API.")
+            Text("Summarization: Anthropic API or OpenRouter (free multilingual models).")
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Spacer()
@@ -369,8 +427,10 @@ struct SettingsView: View {
 
     private func reload() {
         anthropicHasStored = KeychainService.shared.has(.anthropicAPIKey)
+        openRouterHasStored = KeychainService.shared.has(.openRouterAPIKey)
         githubHasStored = KeychainService.shared.has(.githubPAT)
         anthropicKeyDraft = ""
+        openRouterKeyDraft = ""
         githubPATDraft = ""
         userPromptDraft = app.anthropicUserPromptTemplate.isEmpty
             ? AnthropicService.defaultUserPromptTemplate
@@ -383,6 +443,10 @@ struct SettingsView: View {
             let trimmedAnthropic = anthropicKeyDraft.trimmingCharacters(in: .whitespacesAndNewlines)
             if !trimmedAnthropic.isEmpty {
                 try KeychainService.shared.set(trimmedAnthropic, for: .anthropicAPIKey)
+            }
+            let trimmedOpenRouter = openRouterKeyDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmedOpenRouter.isEmpty {
+                try KeychainService.shared.set(trimmedOpenRouter, for: .openRouterAPIKey)
             }
             let trimmedGithub = githubPATDraft.trimmingCharacters(in: .whitespacesAndNewlines)
             if !trimmedGithub.isEmpty {
