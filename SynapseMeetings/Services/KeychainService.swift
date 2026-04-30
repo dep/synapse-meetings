@@ -3,6 +3,7 @@ import Security
 
 enum KeychainKey: String, CaseIterable {
     case anthropicAPIKey = "anthropic.api.key"
+    case openRouterAPIKey = "openrouter.api.key"
     case githubPAT = "github.pat"
 }
 
