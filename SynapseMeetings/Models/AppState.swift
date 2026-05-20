@@ -232,6 +232,30 @@ final class AppState: ObservableObject {
         UserDefaults.standard.set(merged, forKey: Self.recentAttendeesKey)
     }
 
+    /// Permanently deletes an attendee everywhere: removes them from every
+    /// recording's attendee list and from the global recents pool so the name
+    /// no longer appears in any picker.
+    func forgetAttendeeEverywhere(_ name: String) {
+        let key = name.lowercased()
+        for rec in store.recordings {
+            let filtered = rec.attendees.filter { $0.name.lowercased() != key }
+            guard filtered.count != rec.attendees.count else { continue }
+            var updated = rec
+            updated.attendees = filtered
+            store.upsert(updated)
+        }
+        forgetRecentAttendee(name)
+    }
+
+    /// Removes a name from the global recents pool permanently.
+    func forgetRecentAttendee(_ name: String) {
+        let key = name.lowercased()
+        let filtered = recentAttendees.filter { $0.lowercased() != key }
+        guard filtered.count != recentAttendees.count else { return }
+        recentAttendees = filtered
+        UserDefaults.standard.set(filtered, forKey: Self.recentAttendeesKey)
+    }
+
     private func loadRecentAttendees() {
         let saved = UserDefaults.standard.stringArray(forKey: Self.recentAttendeesKey) ?? []
         recentAttendees = saved

@@ -119,7 +119,8 @@ struct AttendeesSidebarView: View {
                             name: name,
                             selected: bindingForSelection(of: name),
                             onRename: { newName in rename(name, to: newName) },
-                            onDelete: { remove(name) }
+                            onDelete: { remove(name) },
+                            onDeletePermanently: { deletePermanently(name) }
                         )
                     }
 
@@ -215,6 +216,14 @@ struct AttendeesSidebarView: View {
     private func remove(_ name: String) {
         attendees.removeAll { $0.name.lowercased() == name.lowercased() }
     }
+
+    /// Permanently deletes an attendee: removes from every recording and the
+    /// global recents pool so it never reappears in the picker.
+    private func deletePermanently(_ name: String) {
+        let key = name.lowercased()
+        attendees.removeAll { $0.name.lowercased() == key }
+        app.forgetAttendeeEverywhere(name)
+    }
 }
 
 private struct AttendeeRow: View {
@@ -222,6 +231,7 @@ private struct AttendeeRow: View {
     @Binding var selected: Bool
     let onRename: (String) -> Void
     let onDelete: () -> Void
+    let onDeletePermanently: () -> Void
 
     @State private var isHovering = false
     @State private var isEditing = false
@@ -265,6 +275,12 @@ private struct AttendeeRow: View {
         .padding(.vertical, 4)
         .contentShape(Rectangle())
         .onHover { isHovering = $0 }
+        .contextMenu {
+            Button("Rename") { startEdit() }
+            Button("Remove from this recording") { onDelete() }
+            Divider()
+            Button("Delete attendee", role: .destructive) { onDeletePermanently() }
+        }
     }
 
     private func startEdit() {
