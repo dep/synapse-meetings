@@ -6,6 +6,19 @@
     <description>Most recent changes with links to updates.</description>
     <language>en</language>
     <item>
+      <title>Version 0.4.6</title>
+      <pubDate>Wed, 20 May 2026 15:20:47 +0000</pubDate>
+      <sparkle:version>16</sparkle:version>
+      <sparkle:shortVersionString>0.4.6</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <description><![CDATA[<h2>What's new in 0.4.6</h2><ul><li>Right-click any attendee to permanently delete them from all recordings and the global attendee list</li></ul>]]></description>
+      <enclosure
+        url="https://github.com/dep/synapse-meetings/releases/download/0.4.6/SynapseMeetings-0.4.6.dmg"
+        sparkle:edSignature="BvDwDpFiBvVeQiGJRyeFh0NaP4xw+CvC/hesVc6XTmxDBcUl357LaJc/XWFpUPyMJznWpdVOGC297WEj5CXrAA=="
+        length="7478671"
+        type="application/octet-stream" />
+    </item>
+    <item>
       <title>Version 0.4.5</title>
       <pubDate>Wed, 30 Apr 2026 18:00:00 +0000</pubDate>
       <sparkle:version>15</sparkle:version>
