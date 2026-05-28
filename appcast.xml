@@ -6,6 +6,19 @@
     <description>Most recent changes with links to updates.</description>
     <language>en</language>
     <item>
+      <title>Version 0.4.7</title>
+      <pubDate>Thu, 28 May 2026 15:05:19 +0000</pubDate>
+      <sparkle:version>17</sparkle:version>
+      <sparkle:shortVersionString>0.4.7</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <description><![CDATA[<h2>What's new in 0.4.7</h2><ul><li>Fixed recording not starting for a second meeting (AVAudioEngine reset and reliable start/stop)</li><li>Calendar sidebar advances to today when the app stays open overnight</li></ul>]]></description>
+      <enclosure
+        url="https://github.com/dep/synapse-meetings/releases/download/0.4.7/SynapseMeetings-0.4.7.dmg"
+        sparkle:edSignature="7MtZlU8VWpFyx8BMBcuUpInTjYE0v2QLtVuzhZlxYfJzHlkqywx3kv//nY2KGdCvZLurgs1OU8KrvF+CBLtOAg=="
+        length="7478827"
+        type="application/octet-stream" />
+    </item>
+    <item>
       <title>Version 0.4.6</title>
       <pubDate>Wed, 20 May 2026 15:20:47 +0000</pubDate>
       <sparkle:version>16</sparkle:version>
