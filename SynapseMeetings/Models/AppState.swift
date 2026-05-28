@@ -13,8 +13,10 @@ final class AppState: ObservableObject {
     let audioDevices = AudioDeviceService()
 
     @Published var selectedRecordingID: Recording.ID?
+    /// The recording currently capturing audio. Can differ from `selectedRecordingID`
+    /// when the user selects another row in the list while recording.
+    @Published private(set) var activeRecordingID: Recording.ID?
     @Published var settingsOpenRequest = UUID()
-    @Published var newRecordingRequest: UUID?
 
     @Published var pipelineErrors: [UUID: String] = [:]
     @Published private(set) var liveTranscript: String = ""
@@ -84,7 +86,7 @@ final class AppState: ObservableObject {
 
     func toggleRecording() {
         if recorder.isRecording {
-            if let r = selectedRecording { stopRecordingAndProcess(r) }
+            stopActiveRecordingAndProcess()
         } else {
             requestNewRecording()
         }
@@ -95,16 +97,51 @@ final class AppState: ObservableObject {
         return store.recordings.first { $0.id == id }
     }
 
+    var activeRecording: Recording? {
+        guard let id = activeRecordingID else { return nil }
+        return store.recordings.first { $0.id == id }
+    }
+
     func requestNewRecording() {
+        guard !recorder.isRecording else { return }
         pendingPrefill = nil
-        newRecordingRequest = UUID()
+        performNewRecordingRequest()
     }
 
     /// Begin a new recording pre-filled with metadata from a calendar event.
     /// Pass `attendees` only when the user has opted into calendar-based attendee prefill.
     func requestNewRecording(prefilledTitle: String?, prefilledAttendees: [Attendee] = []) {
+        guard !recorder.isRecording else { return }
         pendingPrefill = PendingRecordingPrefill(title: prefilledTitle, attendees: prefilledAttendees)
-        newRecordingRequest = UUID()
+        performNewRecordingRequest()
+    }
+
+    private func performNewRecordingRequest() {
+        do {
+            _ = try startNewRecording()
+        } catch {
+            NSLog("Failed to start recording: \(error)")
+        }
+    }
+
+    func stopActiveRecordingAndProcess() {
+        if let recording = activeRecording {
+            stopRecordingAndProcess(recording)
+            return
+        }
+        if recorder.isRecording {
+            liveTranscriptTask?.cancel()
+            liveTranscriptTask = nil
+            recorder.onChunk = nil
+            _ = recorder.stop()
+        }
+        activeRecordingID = nil
+    }
+
+    func clearActiveRecordingIfMatches(_ id: Recording.ID) {
+        if activeRecordingID == id {
+            activeRecordingID = nil
+        }
     }
 
     // MARK: - Pipeline
@@ -160,6 +197,7 @@ final class AppState: ObservableObject {
             recording.calendarEventTitle = calendarTitle
         }
         store.upsert(recording)
+        activeRecordingID = recording.id
         selectedRecordingID = recording.id
         return recording
     }
@@ -190,6 +228,7 @@ final class AppState: ObservableObject {
         liveTranscriptTask = nil
         recorder.onChunk = nil
         let stoppedURL = recorder.stop()
+        activeRecordingID = nil
         var updated = recording
         updated.duration = recorder.elapsed
         if stoppedURL == nil {

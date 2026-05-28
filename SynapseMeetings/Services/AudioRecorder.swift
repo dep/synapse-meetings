@@ -36,13 +36,25 @@ final class AudioRecorder: ObservableObject {
     var preferredInputDeviceUID: String = ""
 
     func start(writingTo url: URL) throws {
-        guard !isRecording else { return }
+        if isRecording {
+            throw NSError(
+                domain: "AudioRecorder",
+                code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "Already recording"]
+            )
+        }
         lastError = nil
         outputURL = url
 
         applyPreferredInputDevice()
 
         let input = engine.inputNode
+        input.removeTap(onBus: 0)
+        if engine.isRunning {
+            engine.stop()
+        }
+        engine.reset()
+
         let inputFormat = input.outputFormat(forBus: 0)
 
         guard let targetFormat = AVAudioFormat(
@@ -72,7 +84,6 @@ final class AudioRecorder: ObservableObject {
         pcmBufferQueue.sync { pcmBuffer.removeAll(keepingCapacity: true) }
         converter = AVAudioConverter(from: inputFormat, to: targetFormat)
 
-        input.removeTap(onBus: 0)
         input.installTap(onBus: 0, bufferSize: 4096, format: inputFormat) { [weak self] buffer, _ in
             self?.handleTap(buffer: buffer, targetFormat: targetFormat)
         }
@@ -81,6 +92,7 @@ final class AudioRecorder: ObservableObject {
         try engine.start()
 
         startedAt = Date()
+        elapsed = 0
         isRecording = true
         let t = Timer(timeInterval: 0.2, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.tickElapsed() }
@@ -102,6 +114,7 @@ final class AudioRecorder: ObservableObject {
         chunkTimer = nil
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
+        engine.reset()
         timer?.invalidate()
         timer = nil
         isRecording = false

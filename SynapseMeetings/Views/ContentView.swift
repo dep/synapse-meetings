@@ -16,7 +16,7 @@ struct ContentView: View {
             RecordingsListView()
                 .navigationSplitViewColumnWidth(min: 180, ideal: 300, max: 500)
         } content: {
-            if let recording = app.selectedRecording {
+            if let recording = app.activeRecording ?? app.selectedRecording {
                 RecordingDetailView(recording: recording)
                     .id(recording.id)
             } else {
@@ -72,14 +72,6 @@ struct ContentView: View {
             // surface the sheet retroactively.
             if case .downloading = newState, !showFirstRunSheet {
                 showFirstRunSheet = true
-            }
-        }
-        .onReceive(app.$newRecordingRequest) { request in
-            guard request != nil else { return }
-            do {
-                _ = try app.startNewRecording()
-            } catch {
-                print("Failed to start recording: \(error)")
             }
         }
     }

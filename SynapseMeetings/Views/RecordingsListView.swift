@@ -25,6 +25,11 @@ struct RecordingsListView: View {
                         .tag(recording.id as Recording.ID?)
                         .contextMenu {
                             Button("Delete", role: .destructive) {
+                                if app.activeRecordingID == recording.id, app.recorder.isRecording {
+                                    app.stopActiveRecordingAndProcess()
+                                } else {
+                                    app.clearActiveRecordingIfMatches(recording.id)
+                                }
                                 app.store.delete(recording)
                                 if app.selectedRecordingID == recording.id {
                                     app.selectedRecordingID = nil
@@ -247,9 +252,7 @@ private struct NewRecordingButton: View {
     var body: some View {
         if app.recorder.isRecording {
             Button {
-                if let r = app.selectedRecording {
-                    app.stopRecordingAndProcess(r)
-                }
+                app.stopActiveRecordingAndProcess()
             } label: {
                 HStack(spacing: 4) {
                     Image(systemName: "stop.fill")

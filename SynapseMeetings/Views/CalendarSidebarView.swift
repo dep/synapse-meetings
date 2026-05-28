@@ -29,7 +29,7 @@ struct CalendarSidebarView: View {
             Spacer()
             if app.calendar.authState == .granted {
                 Button("Today") {
-                    app.calendar.selectedDate = Calendar.current.startOfDay(for: Date())
+                    app.calendar.goToToday()
                 }
                 .font(.caption)
                 .buttonStyle(.borderless)
@@ -45,7 +45,7 @@ struct CalendarSidebarView: View {
             MiniCalendarGrid(
                 selectedDate: Binding(
                     get: { app.calendar.selectedDate },
-                    set: { app.calendar.selectedDate = Calendar.current.startOfDay(for: $0) }
+                    set: { app.calendar.selectDate($0) }
                 )
             )
             .padding(.horizontal, 10)
