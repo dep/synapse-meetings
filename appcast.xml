@@ -6,6 +6,19 @@
     <description>Most recent changes with links to updates.</description>
     <language>en</language>
     <item>
+      <title>Version 0.4.8</title>
+      <pubDate>Fri, 29 May 2026 18:53:00 +0000</pubDate>
+      <sparkle:version>18</sparkle:version>
+      <sparkle:shortVersionString>0.4.8</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <description><![CDATA[<h2>What's new in 0.4.8</h2><ul><li>Fixed microphone permission prompt appearing repeatedly — the OS dialog now shows exactly once at launch</li><li>Live transcript text is now selectable and copyable</li></ul>]]></description>
+      <enclosure
+        url="https://github.com/dep/synapse-meetings/releases/download/0.4.8/SynapseMeetings-0.4.8.dmg"
+        sparkle:edSignature="Zmd5ay8TGE7fXH0zlqpPujB/HFAWu0y2cUK8862I+ZEznhjrgNzxag/mghtNWxSmGiuUwQ7/INBR/hLbTFz6Bg=="
+        length="7495921"
+        type="application/octet-stream" />
+    </item>
+    <item>
       <title>Version 0.4.7</title>
       <pubDate>Thu, 28 May 2026 15:05:19 +0000</pubDate>
       <sparkle:version>17</sparkle:version>
