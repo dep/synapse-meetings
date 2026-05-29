@@ -68,6 +68,12 @@ final class AppState: ObservableObject {
 
         loadRecentAttendees()
 
+        // Request microphone permission once at launch so the OS dialog
+        // appears at a predictable moment — never mid-recording.
+        Task { [weak self] in
+            await self?.recorder.requestMicrophonePermissionIfNeeded()
+        }
+
         // Kick off calendar permission early so the sidebar fills in as soon
         // as the user grants access.
         Task { [weak self] in

@@ -4,6 +4,10 @@ import CoreAudio
 import AudioToolbox
 import Combine
 
+private extension AVAuthorizationStatus {
+    var isMicrophoneGranted: Bool { self == .authorized }
+}
+
 @MainActor
 final class AudioRecorder: ObservableObject {
     @Published private(set) var isRecording = false
@@ -35,12 +39,28 @@ final class AudioRecorder: ObservableObject {
     /// UID of the preferred input device. Empty / unresolvable means use the system default.
     var preferredInputDeviceUID: String = ""
 
+    /// Request microphone permission once at app launch. Safe to call repeatedly —
+    /// the OS shows the dialog only on the first call when status is `.notDetermined`.
+    func requestMicrophonePermissionIfNeeded() async {
+        let status = AVCaptureDevice.authorizationStatus(for: .audio)
+        guard status == .notDetermined else { return }
+        _ = await AVCaptureDevice.requestAccess(for: .audio)
+    }
+
     func start(writingTo url: URL) throws {
         if isRecording {
             throw NSError(
                 domain: "AudioRecorder",
                 code: 1,
                 userInfo: [NSLocalizedDescriptionKey: "Already recording"]
+            )
+        }
+
+        guard AVCaptureDevice.authorizationStatus(for: .audio).isMicrophoneGranted else {
+            throw NSError(
+                domain: "AudioRecorder",
+                code: 2,
+                userInfo: [NSLocalizedDescriptionKey: "Microphone access is required to record. Please grant access in System Settings → Privacy & Security → Microphone."]
             )
         }
         lastError = nil

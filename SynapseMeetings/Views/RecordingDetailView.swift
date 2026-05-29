@@ -246,6 +246,7 @@ private struct RecordingInProgressView: View {
                                 Text(app.liveTranscript)
                                     .font(.system(.body, design: .default))
                                     .foregroundStyle(.primary)
+                                    .textSelection(.enabled)
                                     .padding(.horizontal, 16)
                                     .padding(.vertical, 8)
                                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -340,6 +341,7 @@ private struct TranscribingView: View {
                         Text(app.liveTranscript)
                             .font(.system(.body, design: .default))
                             .foregroundStyle(.primary)
+                            .textSelection(.enabled)
                             .padding(16)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
