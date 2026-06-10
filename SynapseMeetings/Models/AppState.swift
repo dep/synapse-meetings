@@ -7,7 +7,7 @@ import FluidAudio
 final class AppState: ObservableObject {
     let store: RecordingStore
     /// Factory seam: tests replace this to avoid Keychain + network.
-    private let makeSummarizer: (String) throws -> any Summarizing
+    private let makeSummarizer: (SummarizerConfig) throws -> any Summarizing
     let recorder = AudioRecorder()
     let transcriber = TranscriptionService()
     let diarizer = DiarizationService()
@@ -34,22 +34,38 @@ final class AppState: ObservableObject {
     private static let recentAttendeesKey = "recentAttendees"
     private static let recentAttendeesLimit = 100
 
+    @AppStorage("llmProvider") var llmProviderRaw: String = LLMProvider.anthropic.rawValue
     @AppStorage("anthropicModel") var anthropicModel: String = AnthropicService.defaultModel
+    @AppStorage("openRouterModel") var openRouterModel: String = OpenRouterService.defaultModel
     @AppStorage("anthropicSystemPrompt") var anthropicSystemPrompt: String = ""
     @AppStorage("anthropicUserPromptTemplate") var anthropicUserPromptTemplate: String = ""
     @AppStorage("prefillAttendeesFromCalendar") var prefillAttendeesFromCalendar: Bool = false
     @AppStorage("audioInputDeviceUID") var audioInputDeviceUID: String = ""
     @AppStorage("diarizationEnabled") var diarizationEnabled: Bool = true
 
+    /// Computed accessor over `llmProviderRaw`. Falls back to Anthropic if a
+    /// previously-stored value is no longer recognized.
+    /// `@AppStorage` does not publish from an ObservableObject (only from a
+    /// View), so the setter sends `objectWillChange` explicitly — without it,
+    /// views switching on `llmProvider` (the model picker in Settings) would
+    /// not re-render when the provider changes.
+    var llmProvider: LLMProvider {
+        get { LLMProvider(rawValue: llmProviderRaw) ?? .anthropic }
+        set {
+            objectWillChange.send()
+            llmProviderRaw = newValue.rawValue
+        }
+    }
+
     private var cancellables: Set<AnyCancellable> = []
 
     init(
         store: RecordingStore? = nil,
-        makeSummarizer: ((String) throws -> any Summarizing)? = nil
+        makeSummarizer: ((SummarizerConfig) throws -> any Summarizing)? = nil
     ) {
         self.store = store ?? RecordingStore()
-        self.makeSummarizer = makeSummarizer ?? { model in
-            try AnthropicService.makeFromKeychain(model: model)
+        self.makeSummarizer = makeSummarizer ?? { config in
+            try SummarizationFactory.make(config)
         }
         // Republish nested ObservableObject changes so views observing AppState
         // re-render when the recorder/transcriber/store update.
@@ -435,22 +451,26 @@ final class AppState: ObservableObject {
         if forceSummarize || current.summaryMarkdown.isEmpty {
             do {
                 guard applyPipelineUpdate(id: id, { $0.status = .summarizing }) != nil else { return }
-                let anthropic = try makeSummarizer(anthropicModel)
+                let summarizer = try makeSummarizer(SummarizerConfig(
+                    provider: llmProvider,
+                    anthropicModel: anthropicModel,
+                    openRouterModel: openRouterModel
+                ))
                 // Don't pass the placeholder "Recording — date" title as a suggestion —
-                // Claude tends to reuse it verbatim instead of inventing a real title.
+                // models tend to reuse it verbatim instead of inventing a real title.
                 let selectedAttendees = current.attendees
                     .filter { $0.selected }
                     .map { $0.name.trimmingCharacters(in: .whitespacesAndNewlines) }
                     .filter { !$0.isEmpty }
 
-                // When we have speaker turns, feed Claude the speaker-labeled version.
+                // When we have speaker turns, feed the model the speaker-labeled version.
                 // Otherwise, fall back to the raw transcript.
-                let transcriptForClaude: String = current.speakerTurns.isEmpty
+                let transcriptForModel: String = current.speakerTurns.isEmpty
                     ? current.transcript
                     : Self.formatSpeakerTurns(current.speakerTurns)
 
-                let summaryOnly = try await anthropic.summarize(
-                    transcript: transcriptForClaude,
+                let summaryOnly = try await summarizer.summarize(
+                    transcript: transcriptForModel,
                     liveNotes: current.liveNotes,
                     attendees: selectedAttendees,
                     speakerLabeled: !current.speakerTurns.isEmpty,
