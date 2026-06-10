@@ -30,7 +30,6 @@ final class AppState: ObservableObject {
     private var pendingPrefill: PendingRecordingPrefill?
 
     private var liveTranscriptTask: Task<Void, Never>?
-    private var lastChunkTranscriptLength = 0
 
     private static let recentAttendeesKey = "recentAttendees"
     private static let recentAttendeesLimit = 100
@@ -190,7 +189,6 @@ final class AppState: ObservableObject {
     func startNewRecording() throws -> Recording {
         let url = store.newAudioURL()
         liveTranscript = ""
-        lastChunkTranscriptLength = 0
         recorder.onChunk = { [weak self] chunkURL in
             self?.handleChunk(chunkURL)
         }
@@ -219,24 +217,24 @@ final class AppState: ObservableObject {
     }
 
     private func handleChunk(_ url: URL) {
-        liveTranscriptTask?.cancel()
-        liveTranscriptTask = Task { [weak self] in
+        let task = Task { [weak self] in
             guard let self else { return }
             do {
                 let text = try await transcriber.transcribe(fileAt: url)
                 try? FileManager.default.removeItem(at: url)
                 guard !Task.isCancelled else { return }
-                // Each chunk transcribes the full audio so far, so we replace
-                // (not append) — that way Parakeet's evolving understanding
-                // of context shows up cleanly without duplication artifacts.
                 let cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
-                self.liveTranscript = cleaned
-                self.lastChunkTranscriptLength = cleaned.count
+                guard !cleaned.isEmpty else { return }
+                // Chunks are disjoint audio segments now — append, don't replace.
+                self.liveTranscript = self.liveTranscript.isEmpty
+                    ? cleaned
+                    : self.liveTranscript + " " + cleaned
             } catch {
                 NSLog("Live chunk transcription failed: \(error)")
                 try? FileManager.default.removeItem(at: url)
             }
         }
+        liveTranscriptTask = task
     }
 
     func stopRecordingAndProcess(_ recording: Recording) {
