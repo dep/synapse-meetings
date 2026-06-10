@@ -5,7 +5,9 @@ import FluidAudio
 
 @MainActor
 final class AppState: ObservableObject {
-    let store = RecordingStore()
+    let store: RecordingStore
+    /// Factory seam: tests replace this to avoid Keychain + network.
+    private let makeSummarizer: (String) throws -> any Summarizing
     let recorder = AudioRecorder()
     let transcriber = TranscriptionService()
     let diarizer = DiarizationService()
@@ -43,10 +45,17 @@ final class AppState: ObservableObject {
 
     private var cancellables: Set<AnyCancellable> = []
 
-    init() {
+    init(
+        store: RecordingStore? = nil,
+        makeSummarizer: ((String) throws -> any Summarizing)? = nil
+    ) {
+        self.store = store ?? RecordingStore()
+        self.makeSummarizer = makeSummarizer ?? { model in
+            try AnthropicService.makeFromKeychain(model: model)
+        }
         // Republish nested ObservableObject changes so views observing AppState
         // re-render when the recorder/transcriber/store update.
-        store.objectWillChange
+        self.store.objectWillChange
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
         recorder.objectWillChange
@@ -355,7 +364,7 @@ final class AppState: ObservableObject {
         }
     }
 
-    private func executePipeline(id: Recording.ID, forceSummarize: Bool = false) async {
+    func executePipeline(id: Recording.ID, forceSummarize: Bool = false) async {
         guard var recording = store.recordings.first(where: { $0.id == id }) else { return }
 
         // Transcribe + diarize (in parallel when both are needed)
@@ -403,7 +412,7 @@ final class AppState: ObservableObject {
             do {
                 recording.status = .summarizing
                 store.upsert(recording)
-                let anthropic = try AnthropicService.makeFromKeychain(model: anthropicModel)
+                let anthropic = try makeSummarizer(anthropicModel)
                 // Don't pass the placeholder "Recording — date" title as a suggestion —
                 // Claude tends to reuse it verbatim instead of inventing a real title.
                 let selectedAttendees = recording.attendees
