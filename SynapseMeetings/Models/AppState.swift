@@ -45,9 +45,16 @@ final class AppState: ObservableObject {
 
     /// Computed accessor over `llmProviderRaw`. Falls back to Anthropic if a
     /// previously-stored value is no longer recognized.
+    /// `@AppStorage` does not publish from an ObservableObject (only from a
+    /// View), so the setter sends `objectWillChange` explicitly — without it,
+    /// views switching on `llmProvider` (the model picker in Settings) would
+    /// not re-render when the provider changes.
     var llmProvider: LLMProvider {
         get { LLMProvider(rawValue: llmProviderRaw) ?? .anthropic }
-        set { llmProviderRaw = newValue.rawValue }
+        set {
+            objectWillChange.send()
+            llmProviderRaw = newValue.rawValue
+        }
     }
 
     private var cancellables: Set<AnyCancellable> = []

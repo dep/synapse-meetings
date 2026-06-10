@@ -109,6 +109,11 @@ struct SettingsView: View {
                     Text("Anthropic uses paid Claude models. OpenRouter offers free multilingual models — needs an OpenRouter API key.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                    if app.llmProvider == .openrouter && !openRouterHasStored {
+                        Label("No OpenRouter API key set — summarization will fail. Add one in the General tab.", systemImage: "exclamationmark.triangle.fill")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                    }
                 }
 
                 Divider()
