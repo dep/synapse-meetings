@@ -100,6 +100,52 @@ final class CaptureContextTests: XCTestCase {
                              "WAV file should be larger than its 44-byte header after writing 1600 frames (got \(size) bytes)")
     }
 
+    // MARK: Test 4: drainSamples empties the in-memory buffer
+
+    func testDrainSamples_emptiesBuffer() throws {
+        let format = makeTargetFormat()
+        let url = makeTempURL()
+        addTeardownBlock { try? FileManager.default.removeItem(at: url) }
+
+        let file = try makeAudioFile(at: url, format: format)
+        let ctx = CaptureContext(audioFile: file, converter: nil, targetFormat: format)
+
+        let buf = makeSineBuffer(format: format, frameCount: 1600)
+        _ = ctx.ingest(buffer: buf)
+
+        let drained = ctx.drainSamples()
+        XCTAssertEqual(drained.count, 1600,
+                       "drainSamples should return exactly 1600 frames after one ingest")
+
+        let second = ctx.drainSamples()
+        XCTAssertTrue(second.isEmpty,
+                      "drainSamples should be empty on a second call with no new ingest")
+    }
+
+    // MARK: Test 5: drainSamples does not affect WAV file on disk
+
+    func testDrainSamples_doesNotAffectFileOnDisk() throws {
+        let format = makeTargetFormat()
+        let url = makeTempURL()
+        addTeardownBlock { try? FileManager.default.removeItem(at: url) }
+
+        let file = try makeAudioFile(at: url, format: format)
+        let ctx = CaptureContext(audioFile: file, converter: nil, targetFormat: format)
+
+        let buf = makeSineBuffer(format: format, frameCount: 1600)
+        _ = ctx.ingest(buffer: buf)
+
+        // Drain the in-memory buffer — should not affect the on-disk file.
+        _ = ctx.drainSamples()
+        ctx.finish()
+
+        let attrs = try FileManager.default.attributesOfItem(atPath: url.path)
+        let size = attrs[.size] as? Int ?? 0
+        // 44-byte canonical WAV header + 1600 frames * 4 bytes = 6444 bytes minimum.
+        XCTAssertGreaterThan(size, 44,
+                             "WAV file should still contain audio data after drainSamples (got \(size) bytes)")
+    }
+
     // MARK: Test 3: concurrent ingest and finish does not crash
 
     func testConcurrentIngestAndFinish_doesNotCrash() throws {
