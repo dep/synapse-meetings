@@ -144,4 +144,95 @@ final class PipelineExecutionTests: XCTestCase {
         XCTAssertEqual(result?.status, .ready)
         XCTAssertNotEqual(result?.title, "AI Title")
     }
+
+    // MARK: - Plan-006 lost-update regression tests
+
+    private final class GatedSummarizer: Summarizing, @unchecked Sendable {
+        private let (stream, continuation) = AsyncStream<Void>.makeStream()
+        func summarize(
+            transcript: String,
+            liveNotes: String,
+            attendees: [String],
+            speakerLabeled: Bool,
+            suggestedTitle: String?,
+            systemPromptOverride: String?,
+            userPromptTemplateOverride: String?
+        ) async throws -> String {
+            for await _ in stream { break }   // park until the test releases us
+            return "# Done\n\nSummary"
+        }
+        func release() { continuation.yield(); continuation.finish() }
+    }
+
+    /// Verifies that a UI edit made while the pipeline is awaiting the summarizer
+    /// is NOT clobbered by the pipeline's final write. With the old whole-struct
+    /// upsert, the stale snapshot (no attendees) would silently overwrite Sarah.
+    func testEditDuringSummarize_isNotClobbered() async throws {
+        let summarizer = GatedSummarizer()
+        let app = AppState(
+            store: RecordingStore(baseDirectory: tempDir),
+            makeSummarizer: { _ in summarizer }
+        )
+        var rec = Recording(audioFilename: "test.wav")
+        rec.transcript = "Some transcript text"
+        rec.summaryMarkdown = ""
+        rec.status = .summarizing
+        app.store.upsert(rec)
+
+        // Start the pipeline — it will park inside GatedSummarizer.
+        let pipelineTask = Task { await app.executePipeline(id: rec.id) }
+
+        // Yield enough times to let the pipeline suspend inside the summarizer.
+        for _ in 0..<20 { await Task.yield() }
+
+        // Simulate a UI edit that happens while the pipeline is awaiting.
+        app.updateAttendees(for: rec.id, attendees: [Attendee(name: "Sarah")])
+
+        // Release the summarizer and let the pipeline finish.
+        summarizer.release()
+        await pipelineTask.value
+
+        let result = app.store.recordings.first(where: { $0.id == rec.id })
+        XCTAssertNotNil(result)
+        XCTAssertEqual(result?.status, .ready)
+        XCTAssertTrue(result?.summaryMarkdown.contains("# Done") == true,
+                      "Summary should contain the returned content")
+        XCTAssertEqual(result?.attendees.first?.name, "Sarah",
+                       "Attendee edit must not be clobbered by the pipeline write-back")
+    }
+
+    /// Verifies that a recording deleted mid-pipeline stays deleted and is NOT
+    /// resurrected by the pipeline's final write.
+    func testDeletedDuringPipeline_staysDeleted() async throws {
+        let summarizer = GatedSummarizer()
+        let app = AppState(
+            store: RecordingStore(baseDirectory: tempDir),
+            makeSummarizer: { _ in summarizer }
+        )
+        var rec = Recording(audioFilename: "test.wav")
+        rec.transcript = "Some transcript text"
+        rec.summaryMarkdown = ""
+        rec.status = .summarizing
+        app.store.upsert(rec)
+
+        // Start the pipeline — it will park inside GatedSummarizer.
+        let pipelineTask = Task { await app.executePipeline(id: rec.id) }
+
+        // Yield enough times to let the pipeline suspend inside the summarizer.
+        for _ in 0..<20 { await Task.yield() }
+
+        // Delete the recording while the pipeline is parked.
+        if let toDelete = app.store.recordings.first(where: { $0.id == rec.id }) {
+            app.store.delete(toDelete)
+        }
+
+        // Release and await — the pipeline should exit without resurrecting the record.
+        summarizer.release()
+        await pipelineTask.value
+
+        XCTAssertNil(
+            app.store.recordings.first(where: { $0.id == rec.id }),
+            "Deleted recording must not be resurrected by the pipeline"
+        )
+    }
 }
