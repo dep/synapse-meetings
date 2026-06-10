@@ -6,6 +6,19 @@
     <description>Most recent changes with links to updates.</description>
     <language>en</language>
     <item>
+      <title>Version 0.5.0</title>
+      <pubDate>Wed, 10 Jun 2026 20:25:51 +0000</pubDate>
+      <sparkle:version>19</sparkle:version>
+      <sparkle:shortVersionString>0.5.0</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <description><![CDATA[<h2>What's new in 0.5.0</h2><ul><li>OpenRouter support — use any model from any provider with a single API key</li></ul>]]></description>
+      <enclosure
+        url="https://github.com/dep/synapse-meetings/releases/download/0.5.0/SynapseMeetings-0.5.0.dmg"
+        sparkle:edSignature="5BOU4hVZBlev6cmCsLmNImRbfotGht3MxLVw/CxEtre2ccgKr+qi220QwuVI5MgqNueAUlHwOFSqD8IobdlpDg=="
+        length="7555572"
+        type="application/octet-stream" />
+    </item>
+    <item>
       <title>Version 0.4.8</title>
       <pubDate>Fri, 29 May 2026 18:53:00 +0000</pubDate>
       <sparkle:version>18</sparkle:version>
