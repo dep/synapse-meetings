@@ -6,6 +6,71 @@
     <description>Most recent changes with links to updates.</description>
     <language>en</language>
     <item>
+      <title>Version 0.4.8</title>
+      <pubDate>Fri, 29 May 2026 18:53:00 +0000</pubDate>
+      <sparkle:version>18</sparkle:version>
+      <sparkle:shortVersionString>0.4.8</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <description><![CDATA[<h2>What's new in 0.4.8</h2><ul><li>Fixed microphone permission prompt appearing repeatedly — the OS dialog now shows exactly once at launch</li><li>Live transcript text is now selectable and copyable</li></ul>]]></description>
+      <enclosure
+        url="https://github.com/dep/synapse-meetings/releases/download/0.4.8/SynapseMeetings-0.4.8.dmg"
+        sparkle:edSignature="Zmd5ay8TGE7fXH0zlqpPujB/HFAWu0y2cUK8862I+ZEznhjrgNzxag/mghtNWxSmGiuUwQ7/INBR/hLbTFz6Bg=="
+        length="7495921"
+        type="application/octet-stream" />
+    </item>
+    <item>
+      <title>Version 0.4.7</title>
+      <pubDate>Thu, 28 May 2026 15:05:19 +0000</pubDate>
+      <sparkle:version>17</sparkle:version>
+      <sparkle:shortVersionString>0.4.7</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <description><![CDATA[<h2>What's new in 0.4.7</h2><ul><li>Fixed recording not starting for a second meeting (AVAudioEngine reset and reliable start/stop)</li><li>Calendar sidebar advances to today when the app stays open overnight</li></ul>]]></description>
+      <enclosure
+        url="https://github.com/dep/synapse-meetings/releases/download/0.4.7/SynapseMeetings-0.4.7.dmg"
+        sparkle:edSignature="7MtZlU8VWpFyx8BMBcuUpInTjYE0v2QLtVuzhZlxYfJzHlkqywx3kv//nY2KGdCvZLurgs1OU8KrvF+CBLtOAg=="
+        length="7478827"
+        type="application/octet-stream" />
+    </item>
+    <item>
+      <title>Version 0.4.6</title>
+      <pubDate>Wed, 20 May 2026 15:20:47 +0000</pubDate>
+      <sparkle:version>16</sparkle:version>
+      <sparkle:shortVersionString>0.4.6</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <description><![CDATA[<h2>What's new in 0.4.6</h2><ul><li>Right-click any attendee to permanently delete them from all recordings and the global attendee list</li></ul>]]></description>
+      <enclosure
+        url="https://github.com/dep/synapse-meetings/releases/download/0.4.6/SynapseMeetings-0.4.6.dmg"
+        sparkle:edSignature="BvDwDpFiBvVeQiGJRyeFh0NaP4xw+CvC/hesVc6XTmxDBcUl357LaJc/XWFpUPyMJznWpdVOGC297WEj5CXrAA=="
+        length="7478671"
+        type="application/octet-stream" />
+    </item>
+    <item>
+      <title>Version 0.4.5</title>
+      <pubDate>Wed, 30 Apr 2026 18:00:00 +0000</pubDate>
+      <sparkle:version>15</sparkle:version>
+      <sparkle:shortVersionString>0.4.5</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <description><![CDATA[<h2>What's new in 0.4.5</h2><ul><li>Fixed a bug where committing a recording would use the original notes instead of your saved edits</li></ul>]]></description>
+      <enclosure
+        url="https://github.com/dep/synapse-meetings/releases/download/0.4.5/SynapseMeetings-0.4.5.dmg"
+        sparkle:edSignature="D+kGVhG/xSXE6BlE09fvcZn03VymQMCeC8X6PqYucaoASJf/59a/FQbRxxf+KGxLSg2vFDGrd0Zj5S8CBGNGDw=="
+        length="7468695"
+        type="application/octet-stream" />
+    </item>
+    <item>
+      <title>Version 0.4.4</title>
+      <pubDate>Wed, 30 Apr 2026 17:00:00 +0000</pubDate>
+      <sparkle:version>14</sparkle:version>
+      <sparkle:shortVersionString>0.4.4</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <description><![CDATA[<h2>What's new in 0.4.4</h2><ul><li>Fixed significant typing lag in the User Instructions editor in Settings</li></ul>]]></description>
+      <enclosure
+        url="https://github.com/dep/synapse-meetings/releases/download/0.4.4/SynapseMeetings-0.4.4.dmg"
+        sparkle:edSignature="UDa+2qpqTk856jEYGwhenNasV1nuh0E20C/dZ9J7KafMOBxa3BRFMgk07fal+K2VHyrxvH3N8vQnfFIRlMKRDQ=="
+        length="7468203"
+        type="application/octet-stream" />
+    </item>
+    <item>
       <title>Version 0.4.3</title>
       <pubDate>Thu, 30 Apr 2026 10:07:57 +0000</pubDate>
       <sparkle:version>13</sparkle:version>

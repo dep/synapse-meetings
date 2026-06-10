@@ -23,7 +23,7 @@ enum OpenRouterError: LocalizedError {
 /// Free-tier OpenRouter access via the OpenAI-compatible chat completions API.
 /// Uses the same prompt content as `AnthropicService` (see `SummarizationPrompts`)
 /// — the only difference here is the wire format.
-struct OpenRouterService: SummarizationProvider {
+struct OpenRouterService: Summarizing {
     static let defaultModel = "google/gemma-4-31b-it:free"
 
     /// Curated list of free models that handle EN/ES/PT meeting summaries reasonably.

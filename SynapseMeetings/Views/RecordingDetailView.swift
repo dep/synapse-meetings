@@ -6,6 +6,7 @@ struct RecordingDetailView: View {
     let recording: Recording
 
     @State private var editedMarkdown: String = ""
+    @State private var autosaveTask: Task<Void, Never>? = nil
     @State private var showRawTranscript: Bool = false
     @State private var didLoadInitial = false
     @State private var findState = FindState()
@@ -33,6 +34,22 @@ struct RecordingDetailView: View {
         .onReceive(NotificationCenter.default.publisher(for: .flushPendingEdits)) { note in
             guard let id = note.userInfo?["recordingID"] as? UUID, id == recording.id else { return }
             if editedMarkdown != recording.summaryMarkdown {
+                saveEdits()
+            }
+        }
+        .onChange(of: editedMarkdown) { _, newValue in
+            guard didLoadInitial else { return }
+            guard newValue != recording.summaryMarkdown else { return }
+            autosaveTask?.cancel()
+            autosaveTask = Task {
+                try? await Task.sleep(nanoseconds: 500_000_000)
+                guard !Task.isCancelled else { return }
+                saveEdits()
+            }
+        }
+        .onDisappear {
+            autosaveTask?.cancel()
+            if didLoadInitial, editedMarkdown != recording.summaryMarkdown {
                 saveEdits()
             }
         }
@@ -246,6 +263,7 @@ private struct RecordingInProgressView: View {
                                 Text(app.liveTranscript)
                                     .font(.system(.body, design: .default))
                                     .foregroundStyle(.primary)
+                                    .textSelection(.enabled)
                                     .padding(.horizontal, 16)
                                     .padding(.vertical, 8)
                                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -340,6 +358,7 @@ private struct TranscribingView: View {
                         Text(app.liveTranscript)
                             .font(.system(.body, design: .default))
                             .foregroundStyle(.primary)
+                            .textSelection(.enabled)
                             .padding(16)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }

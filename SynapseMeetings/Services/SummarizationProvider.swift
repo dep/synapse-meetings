@@ -16,35 +16,26 @@ enum LLMProvider: String, CaseIterable, Identifiable {
     }
 }
 
-/// Common surface that the pipeline calls regardless of which provider is selected.
-/// Both `AnthropicService` and `OpenRouterService` conform.
-protocol SummarizationProvider {
-    func summarize(
-        transcript: String,
-        liveNotes: String,
-        attendees: [String],
-        speakerLabeled: Bool,
-        suggestedTitle: String?,
-        systemPromptOverride: String?,
-        userPromptTemplateOverride: String?
-    ) async throws -> String
+/// Everything the summarizer factory needs to build the right provider.
+/// Bundled into one value so `AppState`'s `makeSummarizer` test seam stays a
+/// single-argument closure (see `Summarizing` in AnthropicService.swift).
+struct SummarizerConfig {
+    var provider: LLMProvider
+    var anthropicModel: String
+    var openRouterModel: String
 }
 
-/// Constructs the right `SummarizationProvider` for the user's currently
+/// Constructs the right `Summarizing` implementation for the user's currently
 /// selected provider, pulling the API key from the keychain. Throws the
 /// provider's own `missingAPIKey` error if the key is absent — the pipeline
 /// already surfaces this through `recording.lastError`.
 enum SummarizationFactory {
-    static func make(
-        provider: LLMProvider,
-        anthropicModel: String,
-        openRouterModel: String
-    ) throws -> SummarizationProvider {
-        switch provider {
+    static func make(_ config: SummarizerConfig) throws -> any Summarizing {
+        switch config.provider {
         case .anthropic:
-            return try AnthropicService.makeFromKeychain(model: anthropicModel)
+            return try AnthropicService.makeFromKeychain(model: config.anthropicModel)
         case .openrouter:
-            return try OpenRouterService.makeFromKeychain(model: openRouterModel)
+            return try OpenRouterService.makeFromKeychain(model: config.openRouterModel)
         }
     }
 }

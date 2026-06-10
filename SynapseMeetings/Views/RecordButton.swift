@@ -6,9 +6,7 @@ struct RecordButton: View {
     var body: some View {
         if app.recorder.isRecording {
             Button {
-                if let r = app.selectedRecording {
-                    app.stopRecordingAndProcess(r)
-                }
+                app.stopActiveRecordingAndProcess()
             } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "stop.fill")

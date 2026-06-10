@@ -421,20 +421,24 @@ struct CommitSidebarView: View {
         isCommitting = true
 
         // Flush any unsaved edits in the note editor before committing.
+        // Post synchronously, then yield to the RunLoop so onReceive subscribers
+        // (which deliver via Combine on the next RunLoop pass) can call saveEdits()
+        // before we read summaryMarkdown from the store.
         NotificationCenter.default.post(
             name: .flushPendingEdits,
             object: nil,
             userInfo: ["recordingID": recording.id]
         )
-        let latest = app.store.recordings.first(where: { $0.id == recording.id }) ?? recording
 
         let cleanPath = commitPath
-        let contents = latest.summaryMarkdown
         let message = commitMessage
         let repo = selectedRepo
         let branch = selectedBranch
-        Task {
+        Task { @MainActor in
             do {
+                // Yield once so the RunLoop delivers the flush notification above.
+                await Task.yield()
+                let contents = (app.store.recordings.first(where: { $0.id == recording.id }) ?? recording).summaryMarkdown
                 let svc = try GitHubService.makeFromKeychain()
                 let result = try await svc.commitFile(
                     repoFullName: repo,

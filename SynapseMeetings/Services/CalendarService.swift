@@ -19,6 +19,10 @@ final class CalendarService: ObservableObject {
         didSet { reloadEvents() }
     }
 
+    /// When true, the sidebar tracks the current calendar day (Today button / picking today).
+    /// Browsing another day clears this so overnight rollover does not move the selection.
+    private(set) var followsToday = true
+
     /// IDs (calendarIdentifier) the user has chosen to hide. Persisted as JSON in UserDefaults.
     @Published private(set) var hiddenCalendarIDs: Set<String> = []
 
@@ -26,6 +30,8 @@ final class CalendarService: ObservableObject {
 
     private let store = EKEventStore()
     private var changeObserver: NSObjectProtocol?
+    private var dayChangeObserver: NSObjectProtocol?
+    private var activeObserver: NSObjectProtocol?
 
     init() {
         loadHiddenCalendarIDs()
@@ -40,12 +46,52 @@ final class CalendarService: ObservableObject {
                 self?.reloadEvents()
             }
         }
+        dayChangeObserver = NotificationCenter.default.addObserver(
+            forName: .NSCalendarDayChanged,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in self?.advanceToTodayIfFollowing() }
+        }
+        activeObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in self?.advanceToTodayIfFollowing() }
+        }
     }
 
     deinit {
         if let changeObserver {
             NotificationCenter.default.removeObserver(changeObserver)
         }
+        if let dayChangeObserver {
+            NotificationCenter.default.removeObserver(dayChangeObserver)
+        }
+        if let activeObserver {
+            NotificationCenter.default.removeObserver(activeObserver)
+        }
+    }
+
+    /// User picked a day in the mini calendar (or Today).
+    func selectDate(_ date: Date) {
+        let normalized = Calendar.current.startOfDay(for: date)
+        followsToday = Calendar.current.isDateInToday(normalized)
+        selectedDate = normalized
+    }
+
+    func goToToday() {
+        followsToday = true
+        selectedDate = Calendar.current.startOfDay(for: Date())
+    }
+
+    /// Keeps the selection on the current day when the user was viewing "today" and the date rolled over.
+    func advanceToTodayIfFollowing() {
+        guard followsToday else { return }
+        let today = Calendar.current.startOfDay(for: Date())
+        guard !Calendar.current.isDate(selectedDate, inSameDayAs: today) else { return }
+        selectedDate = today
     }
 
     // MARK: - Permission

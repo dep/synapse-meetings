@@ -4,6 +4,139 @@ import CoreAudio
 import AudioToolbox
 import Combine
 
+private extension AVAuthorizationStatus {
+    var isMicrophoneGranted: Bool { self == .authorized }
+}
+
+/// Owns all state the AVAudioEngine tap touches. The tap closure holds the only
+/// strong reference besides AudioRecorder. Every member is guarded by `lock` so
+/// the render thread and main thread never race; `finish()` makes teardown safe
+/// even if a tap callback is mid-flight.
+///
+/// `converter` is optional: when nil, the input buffer is assumed to already be
+/// in `targetFormat` and is written directly (used in tests with identical in/out
+/// formats, since AVAudioConverter with same-format in/out can be unreliable).
+final class CaptureContext: @unchecked Sendable {
+    private let lock = NSLock()
+    private var audioFile: AVAudioFile?
+    private let converter: AVAudioConverter?
+    let targetFormat: AVAudioFormat
+    /// Samples accumulated since the last chunk drain (not the full session).
+    /// Bounds memory to one chunk interval (~10 s ≈ 640 KB at 16 kHz mono Float32).
+    private var pcmBuffer: [Float] = []
+    private var finished = false
+
+    init(audioFile: AVAudioFile, converter: AVAudioConverter?, targetFormat: AVAudioFormat) {
+        self.audioFile = audioFile
+        self.converter = converter
+        self.targetFormat = targetFormat
+    }
+
+    /// Called on the render thread with the raw input buffer.
+    /// Returns the raw RMS level (nil if no frames/error/finished) and an error
+    /// string for the UI (nil on success). The caller applies `min(1, max(0, rms * 4))`
+    /// scaling to the returned level value.
+    func ingest(buffer: AVAudioPCMBuffer) -> (level: Float?, error: String?) {
+        lock.lock()
+        defer { lock.unlock() }
+
+        guard !finished, audioFile != nil else { return (nil, nil) }
+
+        // If no converter, write the buffer directly (input already in target format).
+        guard let converter else {
+            guard buffer.frameLength > 0 else { return (nil, nil) }
+            do {
+                try audioFile!.write(from: buffer)
+            } catch {
+                return (nil, error.localizedDescription)
+            }
+            appendSamples(from: buffer)
+            let rms = computeRMS(from: buffer)
+            return (rms, nil)
+        }
+
+        let ratio = targetFormat.sampleRate / buffer.format.sampleRate
+        let outputCapacity = AVAudioFrameCount(Double(buffer.frameLength) * ratio + 32)
+        guard let outputBuffer = AVAudioPCMBuffer(pcmFormat: targetFormat,
+                                                  frameCapacity: outputCapacity) else {
+            return (nil, nil)
+        }
+
+        var consumed = false
+        var convError: NSError?
+        let status = converter.convert(to: outputBuffer, error: &convError) { _, outStatus in
+            if consumed {
+                outStatus.pointee = .noDataNow
+                return nil
+            }
+            consumed = true
+            outStatus.pointee = .haveData
+            return buffer
+        }
+
+        if status == .error || convError != nil {
+            return (nil, convError?.localizedDescription ?? "Audio conversion failed")
+        }
+
+        guard outputBuffer.frameLength > 0 else { return (nil, nil) }
+
+        do {
+            try audioFile!.write(from: outputBuffer)
+        } catch {
+            return (nil, error.localizedDescription)
+        }
+
+        appendSamples(from: outputBuffer)
+        let rms = computeRMS(from: outputBuffer)
+        return (rms, nil)
+    }
+
+    /// Main thread: snapshot samples for chunk export.
+    func snapshotSamples() -> [Float] {
+        lock.withLock { pcmBuffer }
+    }
+
+    /// Main thread: remove and return all samples accumulated since the last drain.
+    /// Bounds memory to one chunk interval (~10 s ≈ 640 KB at 16 kHz mono Float32).
+    func drainSamples() -> [Float] {
+        lock.withLock {
+            let s = pcmBuffer
+            pcmBuffer.removeAll(keepingCapacity: true)
+            return s
+        }
+    }
+
+    /// Main thread: stop accepting buffers and close the file.
+    func finish() {
+        lock.withLock {
+            finished = true
+            audioFile = nil
+        }
+    }
+
+    // MARK: - Private helpers (called under lock)
+
+    private func appendSamples(from buffer: AVAudioPCMBuffer) {
+        guard let channelData = buffer.floatChannelData?[0] else { return }
+        let frames = Int(buffer.frameLength)
+        guard frames > 0 else { return }
+        let samples = Array(UnsafeBufferPointer(start: channelData, count: frames))
+        pcmBuffer.append(contentsOf: samples)
+    }
+
+    private func computeRMS(from buffer: AVAudioPCMBuffer) -> Float? {
+        guard let channelData = buffer.floatChannelData?[0] else { return nil }
+        let frames = Int(buffer.frameLength)
+        guard frames > 0 else { return nil }
+        var sum: Float = 0
+        for i in 0..<frames {
+            let s = channelData[i]
+            sum += s * s
+        }
+        return sqrt(sum / Float(frames))
+    }
+}
+
 @MainActor
 final class AudioRecorder: ObservableObject {
     @Published private(set) var isRecording = false
@@ -12,17 +145,10 @@ final class AudioRecorder: ObservableObject {
     @Published private(set) var lastError: String?
 
     private let engine = AVAudioEngine()
-    private var audioFile: AVAudioFile?
-    private var converter: AVAudioConverter?
+    private var captureContext: CaptureContext?
     private var startedAt: Date?
     private var timer: Timer?
     private var outputURL: URL?
-    private var targetFormat: AVAudioFormat?
-
-    /// In-memory PCM samples written so far (mono float32). Used to materialize
-    /// a properly-finalized WAV snapshot for chunked transcription.
-    private var pcmBuffer: [Float] = []
-    private let pcmBufferQueue = DispatchQueue(label: "AudioRecorder.pcmBuffer")
 
     private let targetSampleRate: Double = 16_000
     private let targetChannels: AVAudioChannelCount = 1
@@ -35,14 +161,42 @@ final class AudioRecorder: ObservableObject {
     /// UID of the preferred input device. Empty / unresolvable means use the system default.
     var preferredInputDeviceUID: String = ""
 
+    /// Request microphone permission once at app launch. Safe to call repeatedly —
+    /// the OS shows the dialog only on the first call when status is `.notDetermined`.
+    func requestMicrophonePermissionIfNeeded() async {
+        let status = AVCaptureDevice.authorizationStatus(for: .audio)
+        guard status == .notDetermined else { return }
+        _ = await AVCaptureDevice.requestAccess(for: .audio)
+    }
+
     func start(writingTo url: URL) throws {
-        guard !isRecording else { return }
+        if isRecording {
+            throw NSError(
+                domain: "AudioRecorder",
+                code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "Already recording"]
+            )
+        }
+
+        guard AVCaptureDevice.authorizationStatus(for: .audio).isMicrophoneGranted else {
+            throw NSError(
+                domain: "AudioRecorder",
+                code: 2,
+                userInfo: [NSLocalizedDescriptionKey: "Microphone access is required to record. Please grant access in System Settings → Privacy & Security → Microphone."]
+            )
+        }
         lastError = nil
         outputURL = url
 
         applyPreferredInputDevice()
 
         let input = engine.inputNode
+        input.removeTap(onBus: 0)
+        if engine.isRunning {
+            engine.stop()
+        }
+        engine.reset()
+
         let inputFormat = input.outputFormat(forBus: 0)
 
         guard let targetFormat = AVAudioFormat(
@@ -65,22 +219,28 @@ final class AudioRecorder: ObservableObject {
             AVLinearPCMIsNonInterleaved: false,
             AVLinearPCMIsBigEndianKey: false
         ]
-        audioFile = try AVAudioFile(forWriting: url, settings: fileSettings,
-                                    commonFormat: .pcmFormatFloat32, interleaved: false)
+        let file = try AVAudioFile(forWriting: url, settings: fileSettings,
+                                   commonFormat: .pcmFormatFloat32, interleaved: false)
+        let converter = AVAudioConverter(from: inputFormat, to: targetFormat)
 
-        self.targetFormat = targetFormat
-        pcmBufferQueue.sync { pcmBuffer.removeAll(keepingCapacity: true) }
-        converter = AVAudioConverter(from: inputFormat, to: targetFormat)
+        let context = CaptureContext(audioFile: file, converter: converter, targetFormat: targetFormat)
+        captureContext = context
 
-        input.removeTap(onBus: 0)
         input.installTap(onBus: 0, bufferSize: 4096, format: inputFormat) { [weak self] buffer, _ in
-            self?.handleTap(buffer: buffer, targetFormat: targetFormat)
+            let outcome = context.ingest(buffer: buffer)
+            if outcome.level != nil || outcome.error != nil {
+                Task { @MainActor in
+                    if let lvl = outcome.level { self?.level = min(1, max(0, lvl * 4)) }
+                    if let err = outcome.error { self?.lastError = err }
+                }
+            }
         }
 
         engine.prepare()
         try engine.start()
 
         startedAt = Date()
+        elapsed = 0
         isRecording = true
         let t = Timer(timeInterval: 0.2, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.tickElapsed() }
@@ -100,22 +260,24 @@ final class AudioRecorder: ObservableObject {
         guard isRecording else { return outputURL }
         chunkTimer?.invalidate()
         chunkTimer = nil
+        // removeTap/stop before finish so no new callbacks arrive after finish().
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
+        engine.reset()
         timer?.invalidate()
         timer = nil
         isRecording = false
-        audioFile = nil
-        targetFormat = nil
-        pcmBufferQueue.sync { pcmBuffer.removeAll(keepingCapacity: false) }
+        captureContext?.finish()
+        captureContext = nil
         let url = outputURL
         outputURL = nil
         return url
     }
 
     private func fireChunk() {
-        guard let callback = onChunk, let format = targetFormat else { return }
-        let snapshot: [Float] = pcmBufferQueue.sync { pcmBuffer }
+        guard let callback = onChunk, let context = captureContext else { return }
+        let format = context.targetFormat
+        let snapshot = context.drainSamples()
         guard !snapshot.isEmpty else { return }
 
         let tmp = FileManager.default.temporaryDirectory
@@ -149,67 +311,6 @@ final class AudioRecorder: ObservableObject {
         } catch {
             try? FileManager.default.removeItem(at: tmp)
             Task { @MainActor in self.lastError = "Chunk export: \(error.localizedDescription)" }
-        }
-    }
-
-    private func handleTap(buffer: AVAudioPCMBuffer, targetFormat: AVAudioFormat) {
-        guard let converter, let audioFile else { return }
-
-        let ratio = targetFormat.sampleRate / buffer.format.sampleRate
-        let outputCapacity = AVAudioFrameCount(Double(buffer.frameLength) * ratio + 32)
-        guard let outputBuffer = AVAudioPCMBuffer(pcmFormat: targetFormat,
-                                                  frameCapacity: outputCapacity) else { return }
-
-        var consumed = false
-        var convError: NSError?
-        let status = converter.convert(to: outputBuffer, error: &convError) { _, outStatus in
-            if consumed {
-                outStatus.pointee = .noDataNow
-                return nil
-            }
-            consumed = true
-            outStatus.pointee = .haveData
-            return buffer
-        }
-
-        if status == .error || convError != nil {
-            Task { @MainActor in
-                self.lastError = convError?.localizedDescription ?? "Audio conversion failed"
-            }
-            return
-        }
-
-        if outputBuffer.frameLength > 0 {
-            do {
-                try audioFile.write(from: outputBuffer)
-            } catch {
-                Task { @MainActor in self.lastError = error.localizedDescription }
-            }
-            appendToPCMBuffer(outputBuffer)
-            updateLevel(from: outputBuffer)
-        }
-    }
-
-    private func appendToPCMBuffer(_ buffer: AVAudioPCMBuffer) {
-        guard let channelData = buffer.floatChannelData?[0] else { return }
-        let frames = Int(buffer.frameLength)
-        guard frames > 0 else { return }
-        let samples = Array(UnsafeBufferPointer(start: channelData, count: frames))
-        pcmBufferQueue.sync { pcmBuffer.append(contentsOf: samples) }
-    }
-
-    private func updateLevel(from buffer: AVAudioPCMBuffer) {
-        guard let channelData = buffer.floatChannelData?[0] else { return }
-        let frames = Int(buffer.frameLength)
-        guard frames > 0 else { return }
-        var sum: Float = 0
-        for i in 0..<frames {
-            let s = channelData[i]
-            sum += s * s
-        }
-        let rms = sqrt(sum / Float(frames))
-        Task { @MainActor in
-            self.level = min(1, max(0, rms * 4))
         }
     }
 

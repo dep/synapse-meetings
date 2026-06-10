@@ -13,6 +13,8 @@ struct SettingsView: View {
     @State private var saveError: String?
     @State private var savedFlash: Bool = false
     @State private var globalHotkey: KeyCombo? = GlobalHotkeyService.shared.keyCombo
+    @State private var userPromptDraft: String = ""
+    @State private var userPromptDebounceTask: Task<Void, Never>? = nil
 
     private let availableModels: [String] = [
         "claude-opus-4-7",
@@ -152,6 +154,7 @@ struct SettingsView: View {
                             .font(.headline)
                         Spacer()
                         Button("Reset to default") {
+                            userPromptDraft = AnthropicService.defaultUserPromptTemplate
                             app.anthropicUserPromptTemplate = AnthropicService.defaultUserPromptTemplate
                         }
                         .controlSize(.small)
@@ -163,7 +166,7 @@ struct SettingsView: View {
                     placeholderLegend
                         .padding(.top, 2)
 
-                    TextEditor(text: userPromptTemplateBinding)
+                    TextEditor(text: $userPromptDraft)
                         .font(.system(.body, design: .monospaced))
                         .frame(minHeight: 280, maxHeight: 380)
                         .scrollContentBackground(.hidden)
@@ -176,6 +179,14 @@ struct SettingsView: View {
                             RoundedRectangle(cornerRadius: 6, style: .continuous)
                                 .stroke(Color.secondary.opacity(0.3), lineWidth: 0.5)
                         )
+                        .onChange(of: userPromptDraft) { newValue in
+                            userPromptDebounceTask?.cancel()
+                            userPromptDebounceTask = Task {
+                                try? await Task.sleep(nanoseconds: 500_000_000)
+                                guard !Task.isCancelled else { return }
+                                app.anthropicUserPromptTemplate = newValue
+                            }
+                        }
                 }
             }
             .padding(20)
@@ -219,19 +230,8 @@ struct SettingsView: View {
     }
 
     private var effectiveUserPromptTemplate: String {
-        let trimmed = app.anthropicUserPromptTemplate.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? AnthropicService.defaultUserPromptTemplate : app.anthropicUserPromptTemplate
-    }
-
-    private var userPromptTemplateBinding: Binding<String> {
-        Binding(
-            get: {
-                app.anthropicUserPromptTemplate.isEmpty
-                    ? AnthropicService.defaultUserPromptTemplate
-                    : app.anthropicUserPromptTemplate
-            },
-            set: { app.anthropicUserPromptTemplate = $0 }
-        )
+        let trimmed = userPromptDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? AnthropicService.defaultUserPromptTemplate : userPromptDraft
     }
 
     private var audioTab: some View {
@@ -432,6 +432,9 @@ struct SettingsView: View {
         anthropicKeyDraft = ""
         openRouterKeyDraft = ""
         githubPATDraft = ""
+        userPromptDraft = app.anthropicUserPromptTemplate.isEmpty
+            ? AnthropicService.defaultUserPromptTemplate
+            : app.anthropicUserPromptTemplate
     }
 
     private func save() {

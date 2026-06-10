@@ -53,7 +53,9 @@ Single-window SwiftUI macOS app (deployment target 14.0, Swift 5.10). Apple Sili
 
 **Secrets.** Anthropic API keys and GitHub PATs go through `KeychainService`, never `UserDefaults`. User preferences (model name, prompt overrides, hotkeys, audio device UID, diarization toggle) use `@AppStorage`.
 
-**Live transcription is "replace, not append".** Each chunk re-transcribes the full audio so far, so `liveTranscript` is overwritten — appending would duplicate as Parakeet's context grows. See `handleChunk` in `AppState`.
+**Live transcription is incremental.** Each ~10s chunk drains only the samples captured since the last chunk (`CaptureContext.drainSamples()`) and its transcription is **appended** to `liveTranscript`. The authoritative full-quality transcript comes from a single full-file pass after stop. See `handleChunk` in `AppState` and `fireChunk` in `AudioRecorder`.
+
+**Summarization is provider-agnostic.** The pipeline talks to the `Summarizing` protocol (declared in `AnthropicService.swift`); `SummarizationFactory.make(_:)` builds the selected provider (`LLMProvider`) from a `SummarizerConfig`. Tests inject stubs via `AppState.init(store:makeSummarizer:)` — see `PipelineExecutionTests`.
 
 **Diarization is opt-in** via `diarizationEnabled`. When on, `AppState.init` pre-warms the model so the first recording doesn't pay download/compile cost in-band. First launch downloads ~470MB of Parakeet TDT 0.6B v3 Core ML weights from Hugging Face — `ModelDownloadSheet` is the UI for that.
 

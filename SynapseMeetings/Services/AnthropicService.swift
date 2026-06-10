@@ -1,5 +1,20 @@
 import Foundation
 
+/// Seam for tests: anything that can turn a transcript into summary markdown.
+protocol Summarizing {
+    func summarize(
+        transcript: String,
+        liveNotes: String,
+        attendees: [String],
+        speakerLabeled: Bool,
+        suggestedTitle: String?,
+        systemPromptOverride: String?,
+        userPromptTemplateOverride: String?
+    ) async throws -> String
+}
+
+extension AnthropicService: Summarizing {}
+
 enum AnthropicError: LocalizedError {
     case missingAPIKey
     case http(status: Int, body: String)
@@ -20,7 +35,7 @@ enum AnthropicError: LocalizedError {
     }
 }
 
-struct AnthropicService: SummarizationProvider {
+struct AnthropicService {
     static let defaultModel = "claude-sonnet-4-6"
 
     let apiKey: String
