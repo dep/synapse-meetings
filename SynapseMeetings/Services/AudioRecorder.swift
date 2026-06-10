@@ -21,6 +21,8 @@ final class CaptureContext: @unchecked Sendable {
     private var audioFile: AVAudioFile?
     private let converter: AVAudioConverter?
     let targetFormat: AVAudioFormat
+    /// Samples accumulated since the last chunk drain (not the full session).
+    /// Bounds memory to one chunk interval (~10 s ≈ 640 KB at 16 kHz mono Float32).
     private var pcmBuffer: [Float] = []
     private var finished = false
 
@@ -92,6 +94,16 @@ final class CaptureContext: @unchecked Sendable {
     /// Main thread: snapshot samples for chunk export.
     func snapshotSamples() -> [Float] {
         lock.withLock { pcmBuffer }
+    }
+
+    /// Main thread: remove and return all samples accumulated since the last drain.
+    /// Bounds memory to one chunk interval (~10 s ≈ 640 KB at 16 kHz mono Float32).
+    func drainSamples() -> [Float] {
+        lock.withLock {
+            let s = pcmBuffer
+            pcmBuffer.removeAll(keepingCapacity: true)
+            return s
+        }
     }
 
     /// Main thread: stop accepting buffers and close the file.
@@ -265,7 +277,7 @@ final class AudioRecorder: ObservableObject {
     private func fireChunk() {
         guard let callback = onChunk, let context = captureContext else { return }
         let format = context.targetFormat
-        let snapshot = context.snapshotSamples()
+        let snapshot = context.drainSamples()
         guard !snapshot.isEmpty else { return }
 
         let tmp = FileManager.default.temporaryDirectory
