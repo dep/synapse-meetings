@@ -5,7 +5,9 @@ import FluidAudio
 
 @MainActor
 final class AppState: ObservableObject {
-    let store = RecordingStore()
+    let store: RecordingStore
+    /// Factory seam: tests replace this to avoid Keychain + network.
+    private let makeSummarizer: (String) throws -> any Summarizing
     let recorder = AudioRecorder()
     let transcriber = TranscriptionService()
     let diarizer = DiarizationService()
@@ -18,7 +20,6 @@ final class AppState: ObservableObject {
     @Published private(set) var activeRecordingID: Recording.ID?
     @Published var settingsOpenRequest = UUID()
 
-    @Published var pipelineErrors: [UUID: String] = [:]
     @Published private(set) var liveTranscript: String = ""
     @Published private(set) var recentAttendees: [String] = []
 
@@ -29,7 +30,6 @@ final class AppState: ObservableObject {
     private var pendingPrefill: PendingRecordingPrefill?
 
     private var liveTranscriptTask: Task<Void, Never>?
-    private var lastChunkTranscriptLength = 0
 
     private static let recentAttendeesKey = "recentAttendees"
     private static let recentAttendeesLimit = 100
@@ -43,10 +43,17 @@ final class AppState: ObservableObject {
 
     private var cancellables: Set<AnyCancellable> = []
 
-    init() {
+    init(
+        store: RecordingStore? = nil,
+        makeSummarizer: ((String) throws -> any Summarizing)? = nil
+    ) {
+        self.store = store ?? RecordingStore()
+        self.makeSummarizer = makeSummarizer ?? { model in
+            try AnthropicService.makeFromKeychain(model: model)
+        }
         // Republish nested ObservableObject changes so views observing AppState
         // re-render when the recorder/transcriber/store update.
-        store.objectWillChange
+        self.store.objectWillChange
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
         recorder.objectWillChange
@@ -68,24 +75,26 @@ final class AppState: ObservableObject {
 
         loadRecentAttendees()
 
-        // Request microphone permission once at launch so the OS dialog
-        // appears at a predictable moment — never mid-recording.
-        Task { [weak self] in
-            await self?.recorder.requestMicrophonePermissionIfNeeded()
-        }
+        if !TestEnvironment.isRunningTests {
+            // Request microphone permission once at launch so the OS dialog
+            // appears at a predictable moment — never mid-recording.
+            Task { [weak self] in
+                await self?.recorder.requestMicrophonePermissionIfNeeded()
+            }
 
-        // Kick off calendar permission early so the sidebar fills in as soon
-        // as the user grants access.
-        Task { [weak self] in
-            await self?.calendar.requestAccess()
-        }
+            // Kick off calendar permission early so the sidebar fills in as soon
+            // as the user grants access.
+            Task { [weak self] in
+                await self?.calendar.requestAccess()
+            }
 
-        // Pre-warm the diarization model so the first recording's pipeline
-        // doesn't pay the download/compile cost in-band.
-        Task { [weak self] in
-            guard let self else { return }
-            if self.diarizationEnabled {
-                try? await self.diarizer.ensureLoaded()
+            // Pre-warm the diarization model so the first recording's pipeline
+            // doesn't pay the download/compile cost in-band.
+            Task { [weak self] in
+                guard let self else { return }
+                if self.diarizationEnabled {
+                    try? await self.diarizer.ensureLoaded()
+                }
             }
         }
     }
@@ -180,7 +189,6 @@ final class AppState: ObservableObject {
     func startNewRecording() throws -> Recording {
         let url = store.newAudioURL()
         liveTranscript = ""
-        lastChunkTranscriptLength = 0
         recorder.onChunk = { [weak self] chunkURL in
             self?.handleChunk(chunkURL)
         }
@@ -209,24 +217,24 @@ final class AppState: ObservableObject {
     }
 
     private func handleChunk(_ url: URL) {
-        liveTranscriptTask?.cancel()
-        liveTranscriptTask = Task { [weak self] in
+        let task = Task { [weak self] in
             guard let self else { return }
             do {
                 let text = try await transcriber.transcribe(fileAt: url)
                 try? FileManager.default.removeItem(at: url)
                 guard !Task.isCancelled else { return }
-                // Each chunk transcribes the full audio so far, so we replace
-                // (not append) — that way Parakeet's evolving understanding
-                // of context shows up cleanly without duplication artifacts.
                 let cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
-                self.liveTranscript = cleaned
-                self.lastChunkTranscriptLength = cleaned.count
+                guard !cleaned.isEmpty else { return }
+                // Chunks are disjoint audio segments now — append, don't replace.
+                self.liveTranscript = self.liveTranscript.isEmpty
+                    ? cleaned
+                    : self.liveTranscript + " " + cleaned
             } catch {
                 NSLog("Live chunk transcription failed: \(error)")
                 try? FileManager.default.removeItem(at: url)
             }
         }
+        liveTranscriptTask = task
     }
 
     func stopRecordingAndProcess(_ recording: Recording) {
@@ -329,11 +337,10 @@ final class AppState: ObservableObject {
             guard !body.isEmpty else { return }
             updated.transcript = latest.summaryMarkdown
         }
-        updated.summaryMarkdown = ""
         updated.lastError = nil
         updated.status = .summarizing
         store.upsert(updated)
-        runPipeline(for: updated.id)
+        runPipeline(for: updated.id, forceSummarize: true)
     }
 
     func retry(_ recording: Recording) {
@@ -350,26 +357,45 @@ final class AppState: ObservableObject {
         runPipeline(for: updated.id)
     }
 
-    private func runPipeline(for id: Recording.ID) {
+    private func runPipeline(for id: Recording.ID, forceSummarize: Bool = false) {
         Task { [weak self] in
-            await self?.executePipeline(id: id)
+            await self?.executePipeline(id: id, forceSummarize: forceSummarize)
         }
     }
 
-    private func executePipeline(id: Recording.ID) async {
-        guard var recording = store.recordings.first(where: { $0.id == id }) else { return }
+    /// Re-fetches the latest stored copy of the recording, applies `mutate` to it,
+    /// and upserts the result. Because AppState is @MainActor and there is no
+    /// suspension point inside, concurrent UI edits can never be clobbered by the
+    /// pipeline's long-running steps. Returns the updated value, or nil if the
+    /// recording was deleted mid-pipeline.
+    @discardableResult
+    private func applyPipelineUpdate(
+        id: Recording.ID,
+        _ mutate: (inout Recording) -> Void
+    ) -> Recording? {
+        guard var latest = store.recordings.first(where: { $0.id == id }) else { return nil }
+        mutate(&latest)
+        store.upsert(latest)
+        return latest
+    }
+
+    /// The pipeline never holds a `Recording` across an `await` and then upserts it —
+    /// always go through `applyPipelineUpdate`.
+    func executePipeline(id: Recording.ID, forceSummarize: Bool = false) async {
+        // Fresh fetch for the initial emptiness check.
+        guard let initial = store.recordings.first(where: { $0.id == id }) else { return }
 
         // Transcribe + diarize (in parallel when both are needed)
-        if recording.transcript.isEmpty {
+        if initial.transcript.isEmpty {
             do {
-                recording.status = .transcribing
-                store.upsert(recording)
-                let audioURL = store.audioURL(for: recording)
+                guard let snap = applyPipelineUpdate(id: id, { $0.status = .transcribing }) else { return }
+                let audioURL = store.audioURL(for: snap)
                 let runDiarization = diarizationEnabled
 
                 if runDiarization {
                     // Speaker count hint: number of currently-checked attendees, if any.
-                    let hintedSpeakerCount = recording.attendees.filter { $0.selected }.count
+                    // Use the snap from before the await so the hint is consistent.
+                    let hintedSpeakerCount = snap.attendees.filter { $0.selected }.count
                     async let asrTask = transcriber.transcribeWithTimings(fileAt: audioURL)
                     async let diarizeTask: [TimedSpeakerSegment]? = (try? await diarizer.diarize(
                         fileAt: audioURL,
@@ -378,56 +404,64 @@ final class AppState: ObservableObject {
                     let asrResult = try await asrTask
                     let segments = await diarizeTask
 
-                    recording.transcript = asrResult.text
-                    if let segments, let timings = asrResult.tokenTimings, !timings.isEmpty {
-                        recording.speakerTurns = Self.alignTokensToSpeakers(
-                            tokens: timings,
-                            segments: segments
-                        )
+                    let updated = applyPipelineUpdate(id: id) {
+                        $0.transcript = asrResult.text
+                        if let segments, let timings = asrResult.tokenTimings, !timings.isEmpty {
+                            $0.speakerTurns = Self.alignTokensToSpeakers(
+                                tokens: timings,
+                                segments: segments
+                            )
+                        }
                     }
-                    store.upsert(recording)
+                    if updated == nil { return }
                 } else {
                     let transcript = try await transcriber.transcribe(fileAt: audioURL)
-                    recording.transcript = transcript
-                    store.upsert(recording)
+                    let updated = applyPipelineUpdate(id: id) { $0.transcript = transcript }
+                    if updated == nil { return }
                 }
             } catch {
-                recording.status = .failed
-                recording.lastError = "Transcription failed: \(error.localizedDescription)"
-                store.upsert(recording)
+                applyPipelineUpdate(id: id) {
+                    $0.status = .failed
+                    $0.lastError = "Transcription failed: \(error.localizedDescription)"
+                }
                 return
             }
         }
 
+        // Fresh fetch after transcription completes (catches UI edits made during transcription).
+        guard let current = store.recordings.first(where: { $0.id == id }) else { return }
+
         // Summarize
-        if recording.summaryMarkdown.isEmpty {
+        if forceSummarize || current.summaryMarkdown.isEmpty {
             do {
-                recording.status = .summarizing
-                store.upsert(recording)
-                let anthropic = try AnthropicService.makeFromKeychain(model: anthropicModel)
+                guard applyPipelineUpdate(id: id, { $0.status = .summarizing }) != nil else { return }
+                let anthropic = try makeSummarizer(anthropicModel)
                 // Don't pass the placeholder "Recording — date" title as a suggestion —
                 // Claude tends to reuse it verbatim instead of inventing a real title.
-                let selectedAttendees = recording.attendees
+                let selectedAttendees = current.attendees
                     .filter { $0.selected }
                     .map { $0.name.trimmingCharacters(in: .whitespacesAndNewlines) }
                     .filter { !$0.isEmpty }
 
                 // When we have speaker turns, feed Claude the speaker-labeled version.
                 // Otherwise, fall back to the raw transcript.
-                let transcriptForClaude: String = recording.speakerTurns.isEmpty
-                    ? recording.transcript
-                    : Self.formatSpeakerTurns(recording.speakerTurns)
+                let transcriptForClaude: String = current.speakerTurns.isEmpty
+                    ? current.transcript
+                    : Self.formatSpeakerTurns(current.speakerTurns)
 
                 let summaryOnly = try await anthropic.summarize(
                     transcript: transcriptForClaude,
-                    liveNotes: recording.liveNotes,
+                    liveNotes: current.liveNotes,
                     attendees: selectedAttendees,
-                    speakerLabeled: !recording.speakerTurns.isEmpty,
+                    speakerLabeled: !current.speakerTurns.isEmpty,
                     suggestedTitle: nil,
                     systemPromptOverride: anthropicSystemPrompt,
                     userPromptTemplateOverride: anthropicUserPromptTemplate
                 )
-                let trimmedNotes = recording.liveNotes.trimmingCharacters(in: .whitespacesAndNewlines)
+                // Build combined using `current` (captured before the summarize await).
+                // Notes/speakerTurns/transcript don't change during summarize in any
+                // supported UI flow, so using the pre-await snapshot is acceptable.
+                let trimmedNotes = current.liveNotes.trimmingCharacters(in: .whitespacesAndNewlines)
                 let notesSection = trimmedNotes.isEmpty ? "" : """
 
                 ## 📝 Notes taken during meeting
@@ -435,9 +469,9 @@ final class AppState: ObservableObject {
                 \(trimmedNotes)
 
                 """
-                let transcriptSection = recording.speakerTurns.isEmpty
-                    ? recording.transcript
-                    : Self.formatSpeakerTurns(recording.speakerTurns)
+                let transcriptSection = current.speakerTurns.isEmpty
+                    ? current.transcript
+                    : Self.formatSpeakerTurns(current.speakerTurns)
                 let combined = """
                 \(summaryOnly.trimmingCharacters(in: .whitespacesAndNewlines))
                 \(notesSection)
@@ -447,22 +481,23 @@ final class AppState: ObservableObject {
 
                 \(transcriptSection)
                 """
-                recording.summaryMarkdown = combined
-                if recording.calendarEventTitle == nil,
-                   let extracted = Self.extractTitle(from: summaryOnly), !extracted.isEmpty {
-                    recording.title = extracted
+                applyPipelineUpdate(id: id) {
+                    $0.summaryMarkdown = combined
+                    if $0.calendarEventTitle == nil,
+                       let extracted = Self.extractTitle(from: summaryOnly), !extracted.isEmpty {
+                        $0.title = extracted
+                    }
+                    $0.status = .ready
                 }
-                recording.status = .ready
-                store.upsert(recording)
             } catch {
-                recording.status = .failed
-                recording.lastError = "Summarization failed: \(error.localizedDescription)"
-                store.upsert(recording)
+                applyPipelineUpdate(id: id) {
+                    $0.status = .failed
+                    $0.lastError = "Summarization failed: \(error.localizedDescription)"
+                }
                 return
             }
         } else {
-            recording.status = .ready
-            store.upsert(recording)
+            applyPipelineUpdate(id: id) { $0.status = .ready }
         }
     }
 
