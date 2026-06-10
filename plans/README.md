@@ -17,7 +17,7 @@ Regenerate the project with `xcodegen generate`; build/test with
 | 002 | Autosave manual summary edits | P1 | S | — (001 recommended first) | DONE |
 | 003 | Pipeline test seam + CI | P1 | M | 001 | DONE |
 | 004 | Audio tap thread isolation (CaptureContext) | P2 | M | 003 (recommended) | DONE |
-| 005 | Bounded live transcription (drain + append) | P2 | M | 004 (recommended) | TODO |
+| 005 | Bounded live transcription (drain + append) | P2 | M | 004 (recommended) | DONE |
 | 006 | Pipeline stale-snapshot merge | P2 | M | 003 (required) | DONE |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJECTED (with one-line rationale)
