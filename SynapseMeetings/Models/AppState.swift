@@ -329,11 +329,10 @@ final class AppState: ObservableObject {
             guard !body.isEmpty else { return }
             updated.transcript = latest.summaryMarkdown
         }
-        updated.summaryMarkdown = ""
         updated.lastError = nil
         updated.status = .summarizing
         store.upsert(updated)
-        runPipeline(for: updated.id)
+        runPipeline(for: updated.id, forceSummarize: true)
     }
 
     func retry(_ recording: Recording) {
@@ -350,13 +349,13 @@ final class AppState: ObservableObject {
         runPipeline(for: updated.id)
     }
 
-    private func runPipeline(for id: Recording.ID) {
+    private func runPipeline(for id: Recording.ID, forceSummarize: Bool = false) {
         Task { [weak self] in
-            await self?.executePipeline(id: id)
+            await self?.executePipeline(id: id, forceSummarize: forceSummarize)
         }
     }
 
-    private func executePipeline(id: Recording.ID) async {
+    private func executePipeline(id: Recording.ID, forceSummarize: Bool = false) async {
         guard var recording = store.recordings.first(where: { $0.id == id }) else { return }
 
         // Transcribe + diarize (in parallel when both are needed)
@@ -400,7 +399,7 @@ final class AppState: ObservableObject {
         }
 
         // Summarize
-        if recording.summaryMarkdown.isEmpty {
+        if forceSummarize || recording.summaryMarkdown.isEmpty {
             do {
                 recording.status = .summarizing
                 store.upsert(recording)
