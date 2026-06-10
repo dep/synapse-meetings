@@ -15,7 +15,7 @@ Regenerate the project with `xcodegen generate`; build/test with
 |------|-------|----------|--------|------------|--------|
 | 001 | Preserve summary on failed re-summarize | P1 | S | — | DONE |
 | 002 | Autosave manual summary edits | P1 | S | — (001 recommended first) | DONE |
-| 003 | Pipeline test seam + CI | P1 | M | 001 | TODO |
+| 003 | Pipeline test seam + CI | P1 | M | 001 | DONE |
 | 004 | Audio tap thread isolation (CaptureContext) | P2 | M | 003 (recommended) | TODO |
 | 005 | Bounded live transcription (drain + append) | P2 | M | 004 (recommended) | TODO |
 | 006 | Pipeline stale-snapshot merge | P2 | M | 003 (required) | TODO |
