@@ -77,24 +77,26 @@ final class AppState: ObservableObject {
 
         loadRecentAttendees()
 
-        // Request microphone permission once at launch so the OS dialog
-        // appears at a predictable moment — never mid-recording.
-        Task { [weak self] in
-            await self?.recorder.requestMicrophonePermissionIfNeeded()
-        }
+        if !TestEnvironment.isRunningTests {
+            // Request microphone permission once at launch so the OS dialog
+            // appears at a predictable moment — never mid-recording.
+            Task { [weak self] in
+                await self?.recorder.requestMicrophonePermissionIfNeeded()
+            }
 
-        // Kick off calendar permission early so the sidebar fills in as soon
-        // as the user grants access.
-        Task { [weak self] in
-            await self?.calendar.requestAccess()
-        }
+            // Kick off calendar permission early so the sidebar fills in as soon
+            // as the user grants access.
+            Task { [weak self] in
+                await self?.calendar.requestAccess()
+            }
 
-        // Pre-warm the diarization model so the first recording's pipeline
-        // doesn't pay the download/compile cost in-band.
-        Task { [weak self] in
-            guard let self else { return }
-            if self.diarizationEnabled {
-                try? await self.diarizer.ensureLoaded()
+            // Pre-warm the diarization model so the first recording's pipeline
+            // doesn't pay the download/compile cost in-band.
+            Task { [weak self] in
+                guard let self else { return }
+                if self.diarizationEnabled {
+                    try? await self.diarizer.ensureLoaded()
+                }
             }
         }
     }

@@ -60,11 +60,13 @@ struct ContentView: View {
             // Kick off the model load. Show the noisy first-run sheet only if
             // we're actually about to download — otherwise just load silently
             // and the toolbar badge will reflect "Loading…".
-            if case .notLoaded = app.transcriber.modelState {
-                if !app.transcriber.hasLocalModels {
-                    showFirstRunSheet = true
+            if !TestEnvironment.isRunningTests {
+                if case .notLoaded = app.transcriber.modelState {
+                    if !app.transcriber.hasLocalModels {
+                        showFirstRunSheet = true
+                    }
+                    Task { try? await app.transcriber.ensureLoaded() }
                 }
-                Task { try? await app.transcriber.ensureLoaded() }
             }
         }
         .onChange(of: app.transcriber.modelState) { _, newState in
