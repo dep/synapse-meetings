@@ -36,7 +36,7 @@ enum AnthropicError: LocalizedError {
 }
 
 struct AnthropicService {
-    static let defaultModel = "claude-sonnet-4-6"
+    static let defaultModel = "claude-sonnet-5"
 
     let apiKey: String
     let model: String
