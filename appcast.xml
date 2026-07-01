@@ -6,6 +6,19 @@
     <description>Most recent changes with links to updates.</description>
     <language>en</language>
     <item>
+      <title>Version 0.5.2</title>
+      <pubDate>Wed, 01 Jul 2026 09:08:57 +0000</pubDate>
+      <sparkle:version>21</sparkle:version>
+      <sparkle:shortVersionString>0.5.2</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <description><![CDATA[<h2>What's new in 0.5.2</h2><ul><li>Restored Claude Sonnet 4.6 in the model picker alongside Claude Sonnet 5</li></ul>]]></description>
+      <enclosure
+        url="https://github.com/dep/synapse-meetings/releases/download/0.5.2/SynapseMeetings-0.5.2.dmg"
+        sparkle:edSignature="4vMwS+n4ml1G5v4HUXNlvPWRsnsFhL0r1l6cifu6uFzL+JGGHN/jSzZNJttLwTIgXRw/e+UfXXLNGOMPcaOPCQ=="
+        length="7555212"
+        type="application/octet-stream" />
+    </item>
+    <item>
       <title>Version 0.5.1</title>
       <pubDate>Tue, 30 Jun 2026 18:14:23 +0000</pubDate>
       <sparkle:version>20</sparkle:version>
