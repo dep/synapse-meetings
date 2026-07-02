@@ -33,9 +33,10 @@ final class SystemAudioTap {
         }
     }
 
-    // Plain C handles (not Swift/Obj-C isolated state), mutated only from `activate`/
-    // `teardown` on the main actor. `nonisolated(unsafe)` lets `deinit` — which Swift
-    // always runs nonisolated — reach them to guarantee teardown on dealloc.
+    // `nonisolated(unsafe)` lets `deinit` — which Swift always runs nonisolated —
+    // reach these handles to guarantee teardown on dealloc. Safety comes from
+    // ownership, not isolation: `deinit` only runs once no references remain,
+    // so a deinit-triggered teardown can never overlap a live `activate()` call.
     private nonisolated(unsafe) var tapID = AudioObjectID(kAudioObjectUnknown)
     private nonisolated(unsafe) var aggregateID = AudioDeviceID(kAudioObjectUnknown)
 

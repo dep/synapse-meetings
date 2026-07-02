@@ -236,6 +236,9 @@ final class AudioRecorder: ObservableObject {
     @Published private(set) var systemAudioNotice: String?
     /// Typed Any so the class compiles on macOS 14.0 (SystemAudioTap is 14.4+).
     private var systemTap: Any?
+    /// True when the engine's input unit may still point at a destroyed
+    /// aggregate device from a previous dual-track recording.
+    private var inputDeviceNeedsReset = false
 
     /// Request microphone permission once at app launch. Safe to call repeatedly —
     /// the OS shows the dialog only on the first call when status is `.notDetermined`.
@@ -280,15 +283,18 @@ final class AudioRecorder: ObservableObject {
                     systemTap = tap
                     layout = .dualTrack(micChannels: activation.micChannelCount)
                     systemAudioActive = true
+                    inputDeviceNeedsReset = false
                 } catch {
                     NSLog("AudioRecorder: system audio capture unavailable — \(error.localizedDescription)")
                     systemAudioNotice = "System audio unavailable — recording microphone only"
                 }
-            } else {
-                systemAudioNotice = "System audio capture requires macOS 14.4 or later"
             }
         }
         if !systemAudioActive {
+            if inputDeviceNeedsReset {
+                resetEngineInputToDefault()
+                inputDeviceNeedsReset = false
+            }
             applyPreferredInputDevice()
         }
 
@@ -410,6 +416,7 @@ final class AudioRecorder: ObservableObject {
     private func teardownSystemTap() {
         if #available(macOS 14.4, *), let tap = systemTap as? SystemAudioTap {
             tap.teardown()
+            inputDeviceNeedsReset = true
         }
         systemTap = nil
         systemAudioActive = false
@@ -498,6 +505,28 @@ final class AudioRecorder: ObservableObject {
             return false
         }
         return true
+    }
+
+    /// Points the engine's input back at the system-default input device.
+    /// Needed after tearing down the capture aggregate: the input unit would
+    /// otherwise keep referencing the destroyed device ID.
+    private func resetEngineInputToDefault() {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultInputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var deviceID = AudioDeviceID(kAudioObjectUnknown)
+        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+        let status = AudioObjectGetPropertyData(
+            AudioObjectID(kAudioObjectSystemObject),
+            &address, 0, nil, &size, &deviceID
+        )
+        guard status == noErr, deviceID != kAudioObjectUnknown else {
+            NSLog("AudioRecorder: could not resolve default input device (status \(status))")
+            return
+        }
+        setEngineInputDevice(deviceID)
     }
 
     private func audioDeviceID(forUID uid: String) -> AudioDeviceID? {

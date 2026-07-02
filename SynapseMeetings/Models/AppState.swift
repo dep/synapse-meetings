@@ -426,10 +426,15 @@ final class AppState: ObservableObject {
                     // Diarize only the system channel so remote speakers cluster
                     // cleanly and the user's voice never lands in the clusters.
                     var systemSegments: [TimedSpeakerSegment]? = nil
+                    // Both awaits below must stay `try?`: a throw between the
+                    // `async let asrTask` and `try await asrTask` would skip the
+                    // ASR await path this branch depends on.
                     if runDiarization,
                        let systemURL = try? await Task.detached(operation: {
                            try ChannelEnvelopes.writeSystemChannel(from: audioURL)
                        }).value {
+                        // -1 (auto): the attendee-count hint includes the user,
+                        // who is excluded from the system channel by design.
                         systemSegments = try? await diarizer.diarize(fileAt: systemURL, numSpeakers: -1)
                         try? FileManager.default.removeItem(at: systemURL)
                     }

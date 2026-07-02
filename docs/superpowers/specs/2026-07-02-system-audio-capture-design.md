@@ -51,9 +51,11 @@ speaker attribution beyond what diarization alone provides.
   with drift compensation enabled. Because both sources live in one aggregate,
   their buffers arrive sample-aligned in a single render callback — no manual
   clock alignment.
-- Exposes: the aggregate `AudioDeviceID`, `static var isSupported: Bool`,
-  permission state, `start()`/`teardown()`. Teardown destroys the tap and the
-  aggregate device unconditionally (also on failure paths).
+- Exposes: `activate(preferredMicUID:) throws -> ActivationResult` (aggregate
+  device ID + mic channel count) and an idempotent `teardown()`. Availability
+  is checked at call sites via `#available(macOS 14.4, *)`; permission denial
+  surfaces as an activation failure and falls back to mic-only (no separate
+  permission-state API).
 
 **`AudioRecorder` changes (minimal):**
 
