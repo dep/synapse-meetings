@@ -539,6 +539,51 @@ final class AppState: ObservableObject {
 
     // MARK: - Diarization alignment
 
+    /// Shared turn-builder: walks tokens, asks `labelFor` for each token's speaker
+    /// label, joins consecutive same-label tokens into runs, and reassembles
+    /// SentencePiece pieces (▁ = word boundary) into text.
+    private static func buildTurns(
+        tokens: [TokenTiming],
+        labelFor: (TokenTiming) -> String
+    ) -> [SpeakerTurn] {
+        var turns: [SpeakerTurn] = []
+        var currentLabel: String? = nil
+        var currentStart: Double = 0
+        var currentEnd: Double = 0
+        var currentPieces: [String] = []
+
+        func flushCurrent() {
+            guard let label = currentLabel else { return }
+            let text = decodePieces(currentPieces)
+            if !text.isEmpty {
+                turns.append(SpeakerTurn(
+                    speakerLabel: label,
+                    startSec: currentStart,
+                    endSec: currentEnd,
+                    text: text
+                ))
+            }
+            currentLabel = nil
+            currentPieces.removeAll(keepingCapacity: true)
+        }
+
+        for token in tokens {
+            let label = labelFor(token)
+            if label == currentLabel {
+                currentPieces.append(token.token)
+                currentEnd = token.endTime
+            } else {
+                flushCurrent()
+                currentLabel = label
+                currentStart = token.startTime
+                currentEnd = token.endTime
+                currentPieces = [token.token]
+            }
+        }
+        flushCurrent()
+        return turns
+    }
+
     /// Walks ASR token timings + diarized speaker segments and produces speaker turns.
     /// Each token's midpoint is bucketed into the speaker segment that contains it
     /// (or the nearest one). Consecutive same-speaker tokens are joined into runs,
@@ -562,53 +607,53 @@ final class AppState: ObservableObject {
 
         // Sort segments by start time so the linear walker below stays valid.
         let sortedSegments = segments.sorted { $0.startTimeSeconds < $1.startTimeSeconds }
-
-        var turns: [SpeakerTurn] = []
-        var currentLabel: String? = nil
-        var currentStart: Double = 0
-        var currentEnd: Double = 0
-        var currentPieces: [String] = []
         var segIdx = 0
 
-        func flushCurrent() {
-            guard let label = currentLabel else { return }
-            let text = decodePieces(currentPieces)
-            if !text.isEmpty {
-                turns.append(SpeakerTurn(
-                    speakerLabel: label,
-                    startSec: currentStart,
-                    endSec: currentEnd,
-                    text: text
-                ))
-            }
-            currentLabel = nil
-            currentPieces.removeAll(keepingCapacity: true)
-        }
-
-        for token in tokens {
+        return buildTurns(tokens: tokens) { token in
             let mid = (token.startTime + token.endTime) / 2
             // Advance segment cursor past any segments fully behind us.
             while segIdx + 1 < sortedSegments.count,
                   Double(sortedSegments[segIdx + 1].startTimeSeconds) <= mid {
                 segIdx += 1
             }
-            let seg = sortedSegments[segIdx]
-            let label = labelFor(seg.speakerId)
+            return labelFor(sortedSegments[segIdx].speakerId)
+        }
+    }
 
-            if label == currentLabel {
-                currentPieces.append(token.token)
-                currentEnd = token.endTime
-            } else {
-                flushCurrent()
-                currentLabel = label
-                currentStart = token.startTime
-                currentEnd = token.endTime
-                currentPieces = [token.token]
+    /// Dual-track attribution: mic-energy tokens are "You"; system-energy tokens
+    /// are "Them", or — when the system channel was diarized — "Speaker N" with
+    /// stable first-appearance numbering.
+    static func attributeTokensToChannels(
+        tokens: [TokenTiming],
+        envelopes: ChannelEnvelopes,
+        systemSegments: [TimedSpeakerSegment]?
+    ) -> [SpeakerTurn] {
+        guard !tokens.isEmpty else { return [] }
+
+        var labelMap: [String: String] = [:]
+        var nextSpeakerNumber = 1
+        let sortedSegments = (systemSegments ?? []).sorted { $0.startTimeSeconds < $1.startTimeSeconds }
+        var segIdx = 0
+
+        return buildTurns(tokens: tokens) { token in
+            switch envelopes.source(start: token.startTime, end: token.endTime) {
+            case .mic:
+                return "You"
+            case .system:
+                guard !sortedSegments.isEmpty else { return "Them" }
+                let mid = (token.startTime + token.endTime) / 2
+                while segIdx + 1 < sortedSegments.count,
+                      Double(sortedSegments[segIdx + 1].startTimeSeconds) <= mid {
+                    segIdx += 1
+                }
+                let rawId = sortedSegments[segIdx].speakerId
+                if let existing = labelMap[rawId] { return existing }
+                let label = "Speaker \(nextSpeakerNumber)"
+                nextSpeakerNumber += 1
+                labelMap[rawId] = label
+                return label
             }
         }
-        flushCurrent()
-
-        return turns
     }
 
     /// Reassemble SentencePiece tokens (where ▁ marks a word boundary) into normal text.
