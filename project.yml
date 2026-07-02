@@ -51,6 +51,7 @@ targets:
         CFBundleVersion: "21"
         LSMinimumSystemVersion: "14.0"
         NSMicrophoneUsageDescription: "Synapse Meetings needs microphone access to record your meetings for transcription."
+        NSAudioCaptureUsageDescription: "Synapse Meetings records system audio during meetings so both sides of a headphone call appear in your transcript."
         NSCalendarsUsageDescription: "Synapse Meetings reads your calendar to show today's events alongside your recordings."
         NSCalendarsFullAccessUsageDescription: "Synapse Meetings reads your calendar to show today's events alongside your recordings."
         NSHumanReadableCopyright: "© 2026 Synapse Meetings"

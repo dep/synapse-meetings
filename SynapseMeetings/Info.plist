@@ -22,6 +22,8 @@
 	<string>21</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>14.0</string>
+	<key>NSAudioCaptureUsageDescription</key>
+	<string>Synapse Meetings records system audio during meetings so both sides of a headphone call appear in your transcript.</string>
 	<key>NSCalendarsFullAccessUsageDescription</key>
 	<string>Synapse Meetings reads your calendar to show today's events alongside your recordings.</string>
 	<key>NSCalendarsUsageDescription</key>

@@ -63,7 +63,7 @@ final class AudioDeviceService: ObservableObject {
 
     // MARK: - Enumeration
 
-    private static func enumerateInputDevices() -> [InputDevice] {
+    static func enumerateInputDevices() -> [InputDevice] {
         var address = AudioObjectPropertyAddress(
             mSelector: kAudioHardwarePropertyDevices,
             mScope: kAudioObjectPropertyScopeGlobal,
