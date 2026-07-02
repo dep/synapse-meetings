@@ -67,12 +67,14 @@ final class AnthropicPromptTests: XCTestCase {
 
     func testRenderUserPrompt_speakerBlock_absent_whenNotLabeled() {
         let result = render(speakerLabeled: false)
-        XCTAssertFalse(result.contains("diarized"))
+        XCTAssertFalse(result.contains("speaker-labeled"))
     }
 
     func testRenderUserPrompt_speakerBlock_present_whenLabeled() {
         let result = render(speakerLabeled: true)
-        XCTAssertTrue(result.contains("diarized"))
+        XCTAssertTrue(result.contains("speaker-labeled"))
+        XCTAssertTrue(result.contains("You:"))
+        XCTAssertTrue(result.contains("Them:"))
         XCTAssertTrue(result.contains("Speaker 1"))
     }
 

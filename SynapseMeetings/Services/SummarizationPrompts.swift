@@ -74,7 +74,7 @@ enum SummarizationPrompts {
     ) -> String {
         let speakerBlock: String = speakerLabeled ? """
 
-        The transcript below has been diarized — each block is prefixed with `Speaker 1:`, `Speaker 2:`, etc., where the same number always refers to the same physical speaker. Use these labels in `## 💭 Quotes` (e.g. `> [[Sarah]] (Speaker 2): "…"`) and when attributing actions in `## ✅ Action Items`. If you can confidently map a `Speaker N` to one of the user-provided attendees by context (the speaker introduces themselves, others address them by name, or the user's notes name them), use the attendee's bracketed name in place of the generic label. When you can't tell, keep the `Speaker N` label rather than guessing.
+        The transcript below is speaker-labeled. `You:` marks the user who recorded the meeting (attribute their remarks and action items to the user by name if attendees identify them). `Them:` or `Speaker 1:`, `Speaker 2:`, etc. mark the other participants, where the same number always refers to the same physical speaker. Use these labels in `## 💭 Quotes` (e.g. `> [[Sarah]] (Speaker 2): "…"`) and when attributing actions in `## ✅ Action Items`. If you can confidently map a `Speaker N` to one of the user-provided attendees by context (the speaker introduces themselves, others address them by name, or the user's notes name them), use the attendee's bracketed name in place of the generic label. When you can't tell, keep the `Speaker N` label rather than guessing.
 
         """ : ""
 
