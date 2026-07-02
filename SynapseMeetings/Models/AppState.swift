@@ -42,6 +42,7 @@ final class AppState: ObservableObject {
     @AppStorage("prefillAttendeesFromCalendar") var prefillAttendeesFromCalendar: Bool = false
     @AppStorage("audioInputDeviceUID") var audioInputDeviceUID: String = ""
     @AppStorage("diarizationEnabled") var diarizationEnabled: Bool = true
+    @AppStorage("systemAudioCaptureEnabled") var systemAudioCaptureEnabled: Bool = true
 
     /// Computed accessor over `llmProviderRaw`. Falls back to Anthropic if a
     /// previously-stored value is no longer recognized.
@@ -209,6 +210,7 @@ final class AppState: ObservableObject {
             self?.handleChunk(chunkURL)
         }
         recorder.preferredInputDeviceUID = audioInputDeviceUID
+        recorder.systemAudioEnabled = systemAudioCaptureEnabled
         try recorder.start(writingTo: url)
 
         let prefill = pendingPrefill
@@ -221,7 +223,8 @@ final class AppState: ObservableObject {
             title: resolvedTitle,
             audioFilename: url.lastPathComponent,
             status: .recording,
-            attendees: prefill?.attendees ?? []
+            attendees: prefill?.attendees ?? [],
+            hasSystemAudio: recorder.systemAudioActive
         )
         if let calendarTitle = title {
             recording.calendarEventTitle = calendarTitle
