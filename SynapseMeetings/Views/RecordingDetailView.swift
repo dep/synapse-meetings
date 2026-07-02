@@ -228,6 +228,11 @@ private struct RecordingInProgressView: View {
                 Text(formattedElapsed(app.recorder.elapsed))
                     .font(.system(size: 22, weight: .semibold, design: .monospaced))
                     .monospacedDigit()
+                if let notice = app.recorder.systemAudioNotice {
+                    Label(notice, systemImage: "speaker.slash")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
                 Spacer()
                 Text("Stop recording when done")
                     .font(.caption)

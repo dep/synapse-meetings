@@ -264,7 +264,7 @@ struct SettingsView: View {
                     .foregroundStyle(.orange)
                 }
 
-                Text("Pick a virtual mixer (e.g. BlackHole, Loopback) to capture meeting audio + your mic together.")
+                Text("Your microphone. With system audio capture on, the other side of the call is recorded automatically — no virtual mixer needed.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
@@ -274,6 +274,23 @@ struct SettingsView: View {
                         app.audioDevices.refresh()
                     }
                     .controlSize(.small)
+                }
+            }
+
+            Section("System audio") {
+                if #available(macOS 14.4, *) {
+                    Toggle("Capture system audio (both sides of headphone calls)",
+                           isOn: $app.systemAudioCaptureEnabled)
+                    Text("Records what you hear — Zoom, Meet, Teams — alongside your microphone, and labels the transcript You / Them. macOS asks for System Audio Recording permission on first use.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Toggle("Capture system audio (both sides of headphone calls)",
+                           isOn: .constant(false))
+                        .disabled(true)
+                    Text("Requires macOS 14.4 or later. Recordings capture only your microphone on this system.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
 
