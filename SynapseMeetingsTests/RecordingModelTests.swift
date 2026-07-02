@@ -97,4 +97,24 @@ final class RecordingModelTests: XCTestCase {
         XCTAssertNil(recording.calendarEventTitle)
         XCTAssertNil(recording.committedRepo)
     }
+
+    func testDecode_missingHasSystemAudio_defaultsFalse() throws {
+        // Encode a recording, strip the new key, decode — simulates pre-existing JSON.
+        let rec = Recording(audioFilename: "a.wav")
+        let data = try JSONEncoder().encode(rec)
+        var dict = try JSONSerialization.jsonObject(with: data) as! [String: Any]
+        dict.removeValue(forKey: "hasSystemAudio")
+        let stripped = try JSONSerialization.data(withJSONObject: dict)
+
+        let decoded = try JSONDecoder().decode(Recording.self, from: stripped)
+        XCTAssertFalse(decoded.hasSystemAudio)
+    }
+
+    func testHasSystemAudio_roundTrips() throws {
+        var rec = Recording(audioFilename: "a.wav")
+        rec.hasSystemAudio = true
+        let data = try JSONEncoder().encode(rec)
+        let decoded = try JSONDecoder().decode(Recording.self, from: data)
+        XCTAssertTrue(decoded.hasSystemAudio)
+    }
 }

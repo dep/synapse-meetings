@@ -55,6 +55,9 @@ struct Recording: Identifiable, Codable, Equatable, Hashable {
     var lastError: String?
     var attendees: [Attendee]
     var speakerTurns: [SpeakerTurn]
+    /// True when this recording's WAV is dual-track: L = microphone ("You"),
+    /// R = system-audio tap ("Them"). Drives channel attribution in the pipeline.
+    var hasSystemAudio: Bool
 
     var calendarEventTitle: String?
 
@@ -76,7 +79,8 @@ struct Recording: Identifiable, Codable, Equatable, Hashable {
         status: RecordingStatus = .recording,
         lastError: String? = nil,
         attendees: [Attendee] = [],
-        speakerTurns: [SpeakerTurn] = []
+        speakerTurns: [SpeakerTurn] = [],
+        hasSystemAudio: Bool = false
     ) {
         self.id = id
         self.title = title
@@ -90,6 +94,7 @@ struct Recording: Identifiable, Codable, Equatable, Hashable {
         self.lastError = lastError
         self.attendees = attendees
         self.speakerTurns = speakerTurns
+        self.hasSystemAudio = hasSystemAudio
     }
 
     /// Notes created via "+ Note" have no audio file. Used to drive sidebar
@@ -110,6 +115,7 @@ struct Recording: Identifiable, Codable, Equatable, Hashable {
         lastError = try c.decodeIfPresent(String.self, forKey: .lastError)
         attendees = try c.decodeIfPresent([Attendee].self, forKey: .attendees) ?? []
         speakerTurns = try c.decodeIfPresent([SpeakerTurn].self, forKey: .speakerTurns) ?? []
+        hasSystemAudio = try c.decodeIfPresent(Bool.self, forKey: .hasSystemAudio) ?? false
         calendarEventTitle = try c.decodeIfPresent(String.self, forKey: .calendarEventTitle)
         committedRepo = try c.decodeIfPresent(String.self, forKey: .committedRepo)
         committedBranch = try c.decodeIfPresent(String.self, forKey: .committedBranch)
