@@ -67,6 +67,26 @@ private func makeStereoTargetFormat() -> AVAudioFormat {
                   interleaved: false)!
 }
 
+/// >2-channel formats need an explicit stream description AND a channel layout —
+/// the convenience AVAudioFormat initializers return nil above stereo without one.
+private func makeThreeChannelFormat(sampleRate: Double) -> AVAudioFormat {
+    var asbd = AudioStreamBasicDescription(
+        mSampleRate: sampleRate,
+        mFormatID: kAudioFormatLinearPCM,
+        mFormatFlags: kAudioFormatFlagIsFloat | kAudioFormatFlagIsNonInterleaved | kAudioFormatFlagIsPacked,
+        mBytesPerPacket: 4,
+        mFramesPerPacket: 1,
+        mBytesPerFrame: 4,
+        mChannelsPerFrame: 3,
+        mBitsPerChannel: 32,
+        mReserved: 0
+    )
+    // MPEG_3_0_A = 3 channels (L R C); any 3-channel tag works — CaptureContext
+    // routing only cares about channel indices, not spatial semantics.
+    let layout = AVAudioChannelLayout(layoutTag: kAudioChannelLayoutTag_MPEG_3_0_A)!
+    return AVAudioFormat(streamDescription: &asbd, channelLayout: layout)!
+}
+
 // MARK: - Tests
 
 final class CaptureContextTests: XCTestCase {
@@ -201,36 +221,42 @@ final class CaptureContextTests: XCTestCase {
 
     // MARK: Dual-track layout
 
-    /// 2-channel input (1 mic + 1 system-audio tap), constant values: mic=0.5, tap=0.3.
-    /// Verify routing: mic→L, tap→R, in the file.
+    /// 3-channel input (1 mic + 2 tap), constant values: mic=0.5, tapL=0.2, tapR=0.4.
+    /// Expect file channel L = 0.5 (mic), R = 0.3 (tap average).
     func testDualTrack_routesMicToLeftAndSystemToRight() throws {
-        let inputFormat = makeStereoTargetFormat()
+        let inputFormat = makeThreeChannelFormat(sampleRate: 16_000)
         let target = makeStereoTargetFormat()
         let url = makeTempURL()
         addTeardownBlock { try? FileManager.default.removeItem(at: url) }
 
-        let file = try makeAudioFile(at: url, format: target)
-        // nil converter: routed stereo is already at the target rate/format.
-        let ctx = CaptureContext(audioFile: file, converter: nil, targetFormat: target,
-                                 layout: .dualTrack(micChannels: 1))
+        // Scope the writing AVAudioFile so it deallocates (finalizing the WAV
+        // header) before we open the same URL for reading below.
+        try autoreleasepool {
+            let file = try makeAudioFile(at: url, format: target)
+            // nil converter: routed stereo is already at the target rate/format.
+            let ctx = CaptureContext(audioFile: file, converter: nil, targetFormat: target,
+                                     layout: .dualTrack(micChannels: 1))
 
-        let buf = makeConstantBuffer(format: inputFormat, frameCount: 1600,
-                                     values: [0.5, 0.3])
-        let result = ctx.ingest(buffer: buf)
-        XCTAssertNil(result.error, "ingest should succeed")
+            let buf = makeConstantBuffer(format: inputFormat, frameCount: 1600,
+                                         values: [0.5, 0.2, 0.4])
+            let result = ctx.ingest(buffer: buf)
+            XCTAssertNil(result.error)
+            ctx.finish()
+        }
 
-        // Verify the routed samples are in the drain buffer (they're mixed)
-        let drained = ctx.drainSamples()
-        XCTAssertEqual(drained.count, 1600, "should have 1600 frames")
-        // The drained samples should be the mono mix: (0.5 + 0.3) / 2 = 0.4
-        XCTAssertEqual(drained[0], 0.4, accuracy: 0.001, "drained samples should be mono mix")
-
-        ctx.finish()
+        let readBack = try AVAudioFile(forReading: url)
+        XCTAssertEqual(readBack.processingFormat.channelCount, 2)
+        let readBuf = AVAudioPCMBuffer(pcmFormat: readBack.processingFormat,
+                                       frameCapacity: 1600)!
+        try readBack.read(into: readBuf)
+        XCTAssertEqual(Int(readBuf.frameLength), 1600)
+        XCTAssertEqual(readBuf.floatChannelData![0][0], 0.5, accuracy: 0.001, "L must be the mic channel")
+        XCTAssertEqual(readBuf.floatChannelData![1][0], 0.3, accuracy: 0.001, "R must be the averaged tap channels")
     }
 
     /// drainSamples in dual-track mode returns the mono mix (L+R)/2 = (0.5+0.3)/2 = 0.4.
     func testDualTrack_drainReturnsMonoMix() throws {
-        let inputFormat = makeStereoTargetFormat()
+        let inputFormat = makeThreeChannelFormat(sampleRate: 16_000)
         let target = makeStereoTargetFormat()
         let url = makeTempURL()
         addTeardownBlock { try? FileManager.default.removeItem(at: url) }
@@ -240,7 +266,7 @@ final class CaptureContextTests: XCTestCase {
                                  layout: .dualTrack(micChannels: 1))
 
         let buf = makeConstantBuffer(format: inputFormat, frameCount: 800,
-                                     values: [0.5, 0.3])
+                                     values: [0.5, 0.2, 0.4])
         _ = ctx.ingest(buffer: buf)
 
         let drained = ctx.drainSamples()
@@ -252,7 +278,7 @@ final class CaptureContextTests: XCTestCase {
     /// Level (RMS) in dual-track mode reflects the mic (L) channel only:
     /// mic silent + loud tap ⇒ RMS 0.
     func testDualTrack_levelReflectsMicChannelOnly() throws {
-        let inputFormat = makeStereoTargetFormat()
+        let inputFormat = makeThreeChannelFormat(sampleRate: 16_000)
         let target = makeStereoTargetFormat()
         let url = makeTempURL()
         addTeardownBlock { try? FileManager.default.removeItem(at: url) }
@@ -262,7 +288,7 @@ final class CaptureContextTests: XCTestCase {
                                  layout: .dualTrack(micChannels: 1))
 
         let buf = makeConstantBuffer(format: inputFormat, frameCount: 800,
-                                     values: [0.0, 0.8])
+                                     values: [0.0, 0.8, 0.8])
         let result = ctx.ingest(buffer: buf)
         XCTAssertNotNil(result.level)
         XCTAssertEqual(result.level ?? -1, 0, accuracy: 0.001,
