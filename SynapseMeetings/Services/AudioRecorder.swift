@@ -8,6 +8,15 @@ private extension AVAuthorizationStatus {
     var isMicrophoneGranted: Bool { self == .authorized }
 }
 
+/// How CaptureContext interprets incoming buffer channels.
+enum CaptureLayout {
+    /// Everything downmixed to one channel (existing behavior).
+    case mono
+    /// Dual-track: input channels 0..<micChannels average → L ("You"),
+    /// remaining channels (the system-audio tap) average → R ("Them").
+    case dualTrack(micChannels: Int)
+}
+
 /// Owns all state the AVAudioEngine tap touches. The tap closure holds the only
 /// strong reference besides AudioRecorder. Every member is guarded by `lock` so
 /// the render thread and main thread never race; `finish()` makes teardown safe
@@ -21,26 +30,41 @@ final class CaptureContext: @unchecked Sendable {
     private var audioFile: AVAudioFile?
     private let converter: AVAudioConverter?
     let targetFormat: AVAudioFormat
+    private let layout: CaptureLayout
     /// Samples accumulated since the last chunk drain (not the full session).
     /// Bounds memory to one chunk interval (~10 s ≈ 640 KB at 16 kHz mono Float32).
     private var pcmBuffer: [Float] = []
     private var finished = false
 
-    init(audioFile: AVAudioFile, converter: AVAudioConverter?, targetFormat: AVAudioFormat) {
+    init(audioFile: AVAudioFile, converter: AVAudioConverter?, targetFormat: AVAudioFormat,
+         layout: CaptureLayout = .mono) {
         self.audioFile = audioFile
         self.converter = converter
         self.targetFormat = targetFormat
+        self.layout = layout
     }
 
     /// Called on the render thread with the raw input buffer.
     /// Returns the raw RMS level (nil if no frames/error/finished) and an error
     /// string for the UI (nil on success). The caller applies `min(1, max(0, rms * 4))`
     /// scaling to the returned level value.
-    func ingest(buffer: AVAudioPCMBuffer) -> (level: Float?, error: String?) {
+    func ingest(buffer rawBuffer: AVAudioPCMBuffer) -> (level: Float?, error: String?) {
         lock.lock()
         defer { lock.unlock() }
 
         guard !finished, audioFile != nil else { return (nil, nil) }
+
+        // Route the buffer according to the layout.
+        let buffer: AVAudioPCMBuffer
+        switch layout {
+        case .mono:
+            buffer = rawBuffer
+        case .dualTrack(let micChannels):
+            guard let routed = Self.routeToStereo(buffer: rawBuffer, micChannels: micChannels) else {
+                return (nil, nil)
+            }
+            buffer = routed
+        }
 
         // If no converter, write the buffer directly (input already in target format).
         guard let converter else {
@@ -117,11 +141,20 @@ final class CaptureContext: @unchecked Sendable {
     // MARK: - Private helpers (called under lock)
 
     private func appendSamples(from buffer: AVAudioPCMBuffer) {
-        guard let channelData = buffer.floatChannelData?[0] else { return }
+        guard let channelData = buffer.floatChannelData else { return }
         let frames = Int(buffer.frameLength)
         guard frames > 0 else { return }
-        let samples = Array(UnsafeBufferPointer(start: channelData, count: frames))
-        pcmBuffer.append(contentsOf: samples)
+        if buffer.format.channelCount >= 2 {
+            // Dual-track: live chunks carry the mono mix of both sides.
+            var mixed = [Float](repeating: 0, count: frames)
+            for i in 0..<frames {
+                mixed[i] = (channelData[0][i] + channelData[1][i]) * 0.5
+            }
+            pcmBuffer.append(contentsOf: mixed)
+        } else {
+            let samples = Array(UnsafeBufferPointer(start: channelData[0], count: frames))
+            pcmBuffer.append(contentsOf: samples)
+        }
     }
 
     private func computeRMS(from buffer: AVAudioPCMBuffer) -> Float? {
@@ -134,6 +167,37 @@ final class CaptureContext: @unchecked Sendable {
             sum += s * s
         }
         return sqrt(sum / Float(frames))
+    }
+
+    /// Collapse an N-channel aggregate buffer to stereo: mic channels average → L,
+    /// tap channels average → R. Same sample rate; conversion happens downstream.
+    private static func routeToStereo(buffer: AVAudioPCMBuffer, micChannels: Int) -> AVAudioPCMBuffer? {
+        guard let src = buffer.floatChannelData else { return nil }
+        let totalChannels = Int(buffer.format.channelCount)
+        let frames = Int(buffer.frameLength)
+        let mics = min(max(micChannels, 1), totalChannels)
+        let systemChannels = totalChannels - mics
+        guard frames > 0 else { return nil }
+        guard let stereoFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32,
+                                               sampleRate: buffer.format.sampleRate,
+                                               channels: 2,
+                                               interleaved: false),
+              let out = AVAudioPCMBuffer(pcmFormat: stereoFormat,
+                                         frameCapacity: AVAudioFrameCount(frames)),
+              let dst = out.floatChannelData else { return nil }
+        out.frameLength = AVAudioFrameCount(frames)
+        for f in 0..<frames {
+            var l: Float = 0
+            for c in 0..<mics { l += src[c][f] }
+            dst[0][f] = l / Float(mics)
+            var r: Float = 0
+            if systemChannels > 0 {
+                for c in mics..<totalChannels { r += src[c][f] }
+                r /= Float(systemChannels)
+            }
+            dst[1][f] = r
+        }
+        return out
     }
 }
 

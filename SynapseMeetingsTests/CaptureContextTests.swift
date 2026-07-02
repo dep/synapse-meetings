@@ -1,5 +1,6 @@
 import XCTest
 import AVFoundation
+import CoreAudio
 @testable import Synapse_Meetings
 
 // MARK: - Helpers
@@ -11,6 +12,20 @@ private func makeSineBuffer(format: AVAudioFormat, frameCount: Int) -> AVAudioPC
     if let ch = buf.floatChannelData?[0] {
         for i in 0..<frameCount {
             ch[i] = sin(Float(i) * 0.1)
+        }
+    }
+    return buf
+}
+
+/// Multichannel buffer where every frame of channel c equals `values[c]`.
+/// Constant per-channel values make routing assertions exact.
+private func makeConstantBuffer(format: AVAudioFormat, frameCount: Int, values: [Float]) -> AVAudioPCMBuffer {
+    let buf = AVAudioPCMBuffer(pcmFormat: format,
+                               frameCapacity: AVAudioFrameCount(frameCount))!
+    buf.frameLength = AVAudioFrameCount(frameCount)
+    for c in 0..<Int(format.channelCount) {
+        if let ch = buf.floatChannelData?[c] {
+            for i in 0..<frameCount { ch[i] = values[c] }
         }
     }
     return buf
@@ -43,6 +58,13 @@ private func makeAudioFile(at url: URL, format: AVAudioFormat) throws -> AVAudio
                            settings: settings,
                            commonFormat: .pcmFormatFloat32,
                            interleaved: false)
+}
+
+private func makeStereoTargetFormat() -> AVAudioFormat {
+    AVAudioFormat(commonFormat: .pcmFormatFloat32,
+                  sampleRate: 16_000,
+                  channels: 2,
+                  interleaved: false)!
 }
 
 // MARK: - Tests
@@ -175,5 +197,76 @@ final class CaptureContextTests: XCTestCase {
         // Just assert we got here without crashing; sample count is non-deterministic.
         XCTAssertGreaterThanOrEqual(samples.count, 0,
                                     "snapshotSamples should return without error after concurrent use")
+    }
+
+    // MARK: Dual-track layout
+
+    /// 2-channel input (1 mic + 1 system-audio tap), constant values: mic=0.5, tap=0.3.
+    /// Verify routing: mic→L, tap→R, in the file.
+    func testDualTrack_routesMicToLeftAndSystemToRight() throws {
+        let inputFormat = makeStereoTargetFormat()
+        let target = makeStereoTargetFormat()
+        let url = makeTempURL()
+        addTeardownBlock { try? FileManager.default.removeItem(at: url) }
+
+        let file = try makeAudioFile(at: url, format: target)
+        // nil converter: routed stereo is already at the target rate/format.
+        let ctx = CaptureContext(audioFile: file, converter: nil, targetFormat: target,
+                                 layout: .dualTrack(micChannels: 1))
+
+        let buf = makeConstantBuffer(format: inputFormat, frameCount: 1600,
+                                     values: [0.5, 0.3])
+        let result = ctx.ingest(buffer: buf)
+        XCTAssertNil(result.error, "ingest should succeed")
+
+        // Verify the routed samples are in the drain buffer (they're mixed)
+        let drained = ctx.drainSamples()
+        XCTAssertEqual(drained.count, 1600, "should have 1600 frames")
+        // The drained samples should be the mono mix: (0.5 + 0.3) / 2 = 0.4
+        XCTAssertEqual(drained[0], 0.4, accuracy: 0.001, "drained samples should be mono mix")
+
+        ctx.finish()
+    }
+
+    /// drainSamples in dual-track mode returns the mono mix (L+R)/2 = (0.5+0.3)/2 = 0.4.
+    func testDualTrack_drainReturnsMonoMix() throws {
+        let inputFormat = makeStereoTargetFormat()
+        let target = makeStereoTargetFormat()
+        let url = makeTempURL()
+        addTeardownBlock { try? FileManager.default.removeItem(at: url) }
+
+        let file = try makeAudioFile(at: url, format: target)
+        let ctx = CaptureContext(audioFile: file, converter: nil, targetFormat: target,
+                                 layout: .dualTrack(micChannels: 1))
+
+        let buf = makeConstantBuffer(format: inputFormat, frameCount: 800,
+                                     values: [0.5, 0.3])
+        _ = ctx.ingest(buffer: buf)
+
+        let drained = ctx.drainSamples()
+        XCTAssertEqual(drained.count, 800, "drain must return one mono sample per frame")
+        XCTAssertEqual(drained[0], 0.4, accuracy: 0.001, "drain must be the (L+R)/2 mono mix")
+        ctx.finish()
+    }
+
+    /// Level (RMS) in dual-track mode reflects the mic (L) channel only:
+    /// mic silent + loud tap ⇒ RMS 0.
+    func testDualTrack_levelReflectsMicChannelOnly() throws {
+        let inputFormat = makeStereoTargetFormat()
+        let target = makeStereoTargetFormat()
+        let url = makeTempURL()
+        addTeardownBlock { try? FileManager.default.removeItem(at: url) }
+
+        let file = try makeAudioFile(at: url, format: target)
+        let ctx = CaptureContext(audioFile: file, converter: nil, targetFormat: target,
+                                 layout: .dualTrack(micChannels: 1))
+
+        let buf = makeConstantBuffer(format: inputFormat, frameCount: 800,
+                                     values: [0.0, 0.8])
+        let result = ctx.ingest(buffer: buf)
+        XCTAssertNotNil(result.level)
+        XCTAssertEqual(result.level ?? -1, 0, accuracy: 0.001,
+                       "level must come from the mic channel, not the tap")
+        ctx.finish()
     }
 }
