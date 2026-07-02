@@ -225,6 +225,18 @@ final class AudioRecorder: ObservableObject {
     /// UID of the preferred input device. Empty / unresolvable means use the system default.
     var preferredInputDeviceUID: String = ""
 
+    /// Whether the next recording should also capture system audio (set from
+    /// AppState's setting before start()). Actual availability is reported via
+    /// `systemAudioActive` / `systemAudioNotice`.
+    var systemAudioEnabled = false
+    /// True while the in-flight recording is dual-track (mic + system tap).
+    @Published private(set) var systemAudioActive = false
+    /// Non-blocking user-facing note when system capture was requested but
+    /// unavailable (unsupported OS, permission denied, tap failure).
+    @Published private(set) var systemAudioNotice: String?
+    /// Typed Any so the class compiles on macOS 14.0 (SystemAudioTap is 14.4+).
+    private var systemTap: Any?
+
     /// Request microphone permission once at app launch. Safe to call repeatedly —
     /// the OS shows the dialog only on the first call when status is `.notDetermined`.
     func requestMicrophonePermissionIfNeeded() async {
@@ -252,7 +264,33 @@ final class AudioRecorder: ObservableObject {
         lastError = nil
         outputURL = url
 
-        applyPreferredInputDevice()
+        systemAudioNotice = nil
+        systemAudioActive = false
+        var layout: CaptureLayout = .mono
+        if systemAudioEnabled {
+            if #available(macOS 14.4, *) {
+                do {
+                    let tap = SystemAudioTap()
+                    let activation = try tap.activate(preferredMicUID: preferredInputDeviceUID)
+                    guard setEngineInputDevice(activation.aggregateID) else {
+                        tap.teardown()
+                        throw NSError(domain: "AudioRecorder", code: 3,
+                                      userInfo: [NSLocalizedDescriptionKey: "Could not select capture aggregate device"])
+                    }
+                    systemTap = tap
+                    layout = .dualTrack(micChannels: activation.micChannelCount)
+                    systemAudioActive = true
+                } catch {
+                    NSLog("AudioRecorder: system audio capture unavailable — \(error.localizedDescription)")
+                    systemAudioNotice = "System audio unavailable — recording microphone only"
+                }
+            } else {
+                systemAudioNotice = "System audio capture requires macOS 14.4 or later"
+            }
+        }
+        if !systemAudioActive {
+            applyPreferredInputDevice()
+        }
 
         let input = engine.inputNode
         input.removeTap(onBus: 0)
@@ -263,21 +301,22 @@ final class AudioRecorder: ObservableObject {
 
         let inputFormat = input.outputFormat(forBus: 0)
 
+        let outputChannels: AVAudioChannelCount = systemAudioActive ? 2 : targetChannels
         guard let targetFormat = AVAudioFormat(
             commonFormat: .pcmFormatFloat32,
             sampleRate: targetSampleRate,
-            channels: targetChannels,
+            channels: outputChannels,
             interleaved: false
         ) else {
             throw NSError(domain: "AudioRecorder", code: -1,
                           userInfo: [NSLocalizedDescriptionKey: "Could not build target audio format"])
         }
 
-        // AVAudioFile written in target format (16kHz mono Float32 WAV)
+        // AVAudioFile written in target format (16kHz mono/stereo Float32 WAV)
         let fileSettings: [String: Any] = [
             AVFormatIDKey: kAudioFormatLinearPCM,
             AVSampleRateKey: targetSampleRate,
-            AVNumberOfChannelsKey: targetChannels,
+            AVNumberOfChannelsKey: outputChannels,
             AVLinearPCMBitDepthKey: 32,
             AVLinearPCMIsFloatKey: true,
             AVLinearPCMIsNonInterleaved: false,
@@ -285,9 +324,27 @@ final class AudioRecorder: ObservableObject {
         ]
         let file = try AVAudioFile(forWriting: url, settings: fileSettings,
                                    commonFormat: .pcmFormatFloat32, interleaved: false)
-        let converter = AVAudioConverter(from: inputFormat, to: targetFormat)
 
-        let context = CaptureContext(audioFile: file, converter: converter, targetFormat: targetFormat)
+        let converterInputFormat: AVAudioFormat
+        switch layout {
+        case .mono:
+            converterInputFormat = inputFormat
+        case .dualTrack:
+            // CaptureContext routes N-channel aggregate buffers to stereo before
+            // conversion, so the converter's input side is stereo at the device rate.
+            guard let stereoIn = AVAudioFormat(commonFormat: .pcmFormatFloat32,
+                                               sampleRate: inputFormat.sampleRate,
+                                               channels: 2,
+                                               interleaved: false) else {
+                throw NSError(domain: "AudioRecorder", code: -1,
+                              userInfo: [NSLocalizedDescriptionKey: "Could not build routed stereo format"])
+            }
+            converterInputFormat = stereoIn
+        }
+        let converter = AVAudioConverter(from: converterInputFormat, to: targetFormat)
+
+        let context = CaptureContext(audioFile: file, converter: converter,
+                                     targetFormat: targetFormat, layout: layout)
         captureContext = context
 
         input.installTap(onBus: 0, bufferSize: 4096, format: inputFormat) { [weak self] buffer, _ in
@@ -333,6 +390,11 @@ final class AudioRecorder: ObservableObject {
         isRecording = false
         captureContext?.finish()
         captureContext = nil
+        if #available(macOS 14.4, *), let tap = systemTap as? SystemAudioTap {
+            tap.teardown()
+        }
+        systemTap = nil
+        systemAudioActive = false
         let url = outputURL
         outputURL = nil
         return url
@@ -341,6 +403,10 @@ final class AudioRecorder: ObservableObject {
     private func fireChunk() {
         guard let callback = onChunk, let context = captureContext else { return }
         let format = context.targetFormat
+        guard let monoFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32,
+                                             sampleRate: format.sampleRate,
+                                             channels: 1,
+                                             interleaved: false) else { return }
         let snapshot = context.drainSamples()
         guard !snapshot.isEmpty else { return }
 
@@ -350,8 +416,8 @@ final class AudioRecorder: ObservableObject {
 
         let fileSettings: [String: Any] = [
             AVFormatIDKey: kAudioFormatLinearPCM,
-            AVSampleRateKey: format.sampleRate,
-            AVNumberOfChannelsKey: format.channelCount,
+            AVSampleRateKey: monoFormat.sampleRate,
+            AVNumberOfChannelsKey: 1,
             AVLinearPCMBitDepthKey: 32,
             AVLinearPCMIsFloatKey: true,
             AVLinearPCMIsNonInterleaved: false,
@@ -361,7 +427,7 @@ final class AudioRecorder: ObservableObject {
         do {
             let file = try AVAudioFile(forWriting: tmp, settings: fileSettings,
                                        commonFormat: .pcmFormatFloat32, interleaved: false)
-            guard let buf = AVAudioPCMBuffer(pcmFormat: format,
+            guard let buf = AVAudioPCMBuffer(pcmFormat: monoFormat,
                                              frameCapacity: AVAudioFrameCount(snapshot.count)) else { return }
             buf.frameLength = AVAudioFrameCount(snapshot.count)
             if let dst = buf.floatChannelData?[0] {
@@ -393,12 +459,16 @@ final class AudioRecorder: ObservableObject {
             NSLog("AudioRecorder: preferred input device UID '\(uid)' not currently connected — using system default")
             return
         }
+        setEngineInputDevice(deviceID)
+    }
 
+    /// Points the engine's input AudioUnit at a specific device (mic or aggregate).
+    @discardableResult
+    private func setEngineInputDevice(_ deviceID: AudioDeviceID) -> Bool {
         guard let unit = engine.inputNode.audioUnit else {
             NSLog("AudioRecorder: inputNode.audioUnit is nil; cannot override input device")
-            return
+            return false
         }
-
         var id = deviceID
         let status = AudioUnitSetProperty(
             unit,
@@ -409,8 +479,10 @@ final class AudioRecorder: ObservableObject {
             UInt32(MemoryLayout<AudioDeviceID>.size)
         )
         if status != noErr {
-            NSLog("AudioRecorder: AudioUnitSetProperty(CurrentDevice) failed (status \(status)) — using system default")
+            NSLog("AudioRecorder: AudioUnitSetProperty(CurrentDevice) failed (status \(status))")
+            return false
         }
+        return true
     }
 
     private func audioDeviceID(forUID uid: String) -> AudioDeviceID? {
