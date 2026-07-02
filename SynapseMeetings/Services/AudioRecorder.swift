@@ -292,88 +292,96 @@ final class AudioRecorder: ObservableObject {
             applyPreferredInputDevice()
         }
 
-        let input = engine.inputNode
-        input.removeTap(onBus: 0)
-        if engine.isRunning {
-            engine.stop()
-        }
-        engine.reset()
-
-        let inputFormat = input.outputFormat(forBus: 0)
-
-        let outputChannels: AVAudioChannelCount = systemAudioActive ? 2 : targetChannels
-        guard let targetFormat = AVAudioFormat(
-            commonFormat: .pcmFormatFloat32,
-            sampleRate: targetSampleRate,
-            channels: outputChannels,
-            interleaved: false
-        ) else {
-            throw NSError(domain: "AudioRecorder", code: -1,
-                          userInfo: [NSLocalizedDescriptionKey: "Could not build target audio format"])
-        }
-
-        // AVAudioFile written in target format (16kHz mono/stereo Float32 WAV)
-        let fileSettings: [String: Any] = [
-            AVFormatIDKey: kAudioFormatLinearPCM,
-            AVSampleRateKey: targetSampleRate,
-            AVNumberOfChannelsKey: outputChannels,
-            AVLinearPCMBitDepthKey: 32,
-            AVLinearPCMIsFloatKey: true,
-            AVLinearPCMIsNonInterleaved: false,
-            AVLinearPCMIsBigEndianKey: false
-        ]
-        let file = try AVAudioFile(forWriting: url, settings: fileSettings,
-                                   commonFormat: .pcmFormatFloat32, interleaved: false)
-
-        let converterInputFormat: AVAudioFormat
-        switch layout {
-        case .mono:
-            converterInputFormat = inputFormat
-        case .dualTrack:
-            // CaptureContext routes N-channel aggregate buffers to stereo before
-            // conversion, so the converter's input side is stereo at the device rate.
-            guard let stereoIn = AVAudioFormat(commonFormat: .pcmFormatFloat32,
-                                               sampleRate: inputFormat.sampleRate,
-                                               channels: 2,
-                                               interleaved: false) else {
-                throw NSError(domain: "AudioRecorder", code: -1,
-                              userInfo: [NSLocalizedDescriptionKey: "Could not build routed stereo format"])
+        // Everything below can throw after the tap has been activated; tear the
+        // tap down on failure so the CoreAudio tap/aggregate never leak (stop()
+        // won't run — isRecording is still false at these throw sites).
+        do {
+            let input = engine.inputNode
+            input.removeTap(onBus: 0)
+            if engine.isRunning {
+                engine.stop()
             }
-            converterInputFormat = stereoIn
-        }
-        let converter = AVAudioConverter(from: converterInputFormat, to: targetFormat)
+            engine.reset()
 
-        let context = CaptureContext(audioFile: file, converter: converter,
-                                     targetFormat: targetFormat, layout: layout)
-        captureContext = context
+            let inputFormat = input.outputFormat(forBus: 0)
 
-        input.installTap(onBus: 0, bufferSize: 4096, format: inputFormat) { [weak self] buffer, _ in
-            let outcome = context.ingest(buffer: buffer)
-            if outcome.level != nil || outcome.error != nil {
-                Task { @MainActor in
-                    if let lvl = outcome.level { self?.level = min(1, max(0, lvl * 4)) }
-                    if let err = outcome.error { self?.lastError = err }
+            let outputChannels: AVAudioChannelCount = systemAudioActive ? 2 : targetChannels
+            guard let targetFormat = AVAudioFormat(
+                commonFormat: .pcmFormatFloat32,
+                sampleRate: targetSampleRate,
+                channels: outputChannels,
+                interleaved: false
+            ) else {
+                throw NSError(domain: "AudioRecorder", code: -1,
+                              userInfo: [NSLocalizedDescriptionKey: "Could not build target audio format"])
+            }
+
+            // AVAudioFile written in target format (16kHz mono/stereo Float32 WAV)
+            let fileSettings: [String: Any] = [
+                AVFormatIDKey: kAudioFormatLinearPCM,
+                AVSampleRateKey: targetSampleRate,
+                AVNumberOfChannelsKey: outputChannels,
+                AVLinearPCMBitDepthKey: 32,
+                AVLinearPCMIsFloatKey: true,
+                AVLinearPCMIsNonInterleaved: false,
+                AVLinearPCMIsBigEndianKey: false
+            ]
+            let file = try AVAudioFile(forWriting: url, settings: fileSettings,
+                                       commonFormat: .pcmFormatFloat32, interleaved: false)
+
+            let converterInputFormat: AVAudioFormat
+            switch layout {
+            case .mono:
+                converterInputFormat = inputFormat
+            case .dualTrack:
+                // CaptureContext routes N-channel aggregate buffers to stereo before
+                // conversion, so the converter's input side is stereo at the device rate.
+                guard let stereoIn = AVAudioFormat(commonFormat: .pcmFormatFloat32,
+                                                   sampleRate: inputFormat.sampleRate,
+                                                   channels: 2,
+                                                   interleaved: false) else {
+                    throw NSError(domain: "AudioRecorder", code: -1,
+                                  userInfo: [NSLocalizedDescriptionKey: "Could not build routed stereo format"])
+                }
+                converterInputFormat = stereoIn
+            }
+            let converter = AVAudioConverter(from: converterInputFormat, to: targetFormat)
+
+            let context = CaptureContext(audioFile: file, converter: converter,
+                                         targetFormat: targetFormat, layout: layout)
+            captureContext = context
+
+            input.installTap(onBus: 0, bufferSize: 4096, format: inputFormat) { [weak self] buffer, _ in
+                let outcome = context.ingest(buffer: buffer)
+                if outcome.level != nil || outcome.error != nil {
+                    Task { @MainActor in
+                        if let lvl = outcome.level { self?.level = min(1, max(0, lvl * 4)) }
+                        if let err = outcome.error { self?.lastError = err }
+                    }
                 }
             }
-        }
 
-        engine.prepare()
-        try engine.start()
+            engine.prepare()
+            try engine.start()
 
-        startedAt = Date()
-        elapsed = 0
-        isRecording = true
-        let t = Timer(timeInterval: 0.2, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.tickElapsed() }
-        }
-        RunLoop.main.add(t, forMode: .common)
-        timer = t
+            startedAt = Date()
+            elapsed = 0
+            isRecording = true
+            let t = Timer(timeInterval: 0.2, repeats: true) { [weak self] _ in
+                Task { @MainActor in self?.tickElapsed() }
+            }
+            RunLoop.main.add(t, forMode: .common)
+            timer = t
 
-        let ct = Timer(timeInterval: chunkInterval, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.fireChunk() }
+            let ct = Timer(timeInterval: chunkInterval, repeats: true) { [weak self] _ in
+                Task { @MainActor in self?.fireChunk() }
+            }
+            RunLoop.main.add(ct, forMode: .common)
+            chunkTimer = ct
+        } catch {
+            teardownSystemTap()
+            throw error
         }
-        RunLoop.main.add(ct, forMode: .common)
-        chunkTimer = ct
     }
 
     @discardableResult
@@ -390,14 +398,21 @@ final class AudioRecorder: ObservableObject {
         isRecording = false
         captureContext?.finish()
         captureContext = nil
+        teardownSystemTap()
+        let url = outputURL
+        outputURL = nil
+        return url
+    }
+
+    /// Tears down the system tap/aggregate (if any) and resets dual-track state.
+    /// Used by stop() and by start()'s failure paths so a throw after tap
+    /// activation can never leak the CoreAudio objects.
+    private func teardownSystemTap() {
         if #available(macOS 14.4, *), let tap = systemTap as? SystemAudioTap {
             tap.teardown()
         }
         systemTap = nil
         systemAudioActive = false
-        let url = outputURL
-        outputURL = nil
-        return url
     }
 
     private func fireChunk() {
