@@ -235,4 +235,49 @@ final class PipelineExecutionTests: XCTestCase {
             "Deleted recording must not be resurrected by the pipeline"
         )
     }
+
+    private final class CapturingSummarizer: Summarizing, @unchecked Sendable {
+        private(set) var receivedTranscript: String = ""
+        private(set) var receivedSpeakerLabeled: Bool = false
+        func summarize(
+            transcript: String,
+            liveNotes: String,
+            attendees: [String],
+            speakerLabeled: Bool,
+            suggestedTitle: String?,
+            systemPromptOverride: String?,
+            userPromptTemplateOverride: String?
+        ) async throws -> String {
+            receivedTranscript = transcript
+            receivedSpeakerLabeled = speakerLabeled
+            return "# Done\n\nSummary"
+        }
+    }
+
+    /// Dual-track recordings feed the summarizer a You/Them-labeled transcript
+    /// through the existing speakerTurns path.
+    func testDualTrackSpeakerTurns_flowToSummarizer() async throws {
+        let summarizer = CapturingSummarizer()
+        let app = AppState(
+            store: RecordingStore(baseDirectory: tempDir),
+            makeSummarizer: { _ in summarizer }
+        )
+        var rec = Recording(audioFilename: "test.wav", hasSystemAudio: true)
+        rec.transcript = "Hi there Hello back"
+        rec.speakerTurns = [
+            SpeakerTurn(speakerLabel: "You", startSec: 0, endSec: 1, text: "Hi there"),
+            SpeakerTurn(speakerLabel: "Them", startSec: 1, endSec: 2, text: "Hello back")
+        ]
+        rec.status = .summarizing
+        app.store.upsert(rec)
+
+        await app.executePipeline(id: rec.id)
+
+        XCTAssertTrue(summarizer.receivedSpeakerLabeled)
+        XCTAssertEqual(summarizer.receivedTranscript, "You: Hi there\n\nThem: Hello back")
+        let result = app.store.recordings.first(where: { $0.id == rec.id })
+        XCTAssertEqual(result?.status, .ready)
+        XCTAssertTrue(result?.summaryMarkdown.contains("You: Hi there") == true,
+                      "Raw transcript section must carry the You/Them labels")
+    }
 }

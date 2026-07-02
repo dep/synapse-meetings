@@ -408,7 +408,43 @@ final class AppState: ObservableObject {
                 let audioURL = store.audioURL(for: snap)
                 let runDiarization = diarizationEnabled
 
-                if runDiarization {
+                // Dual-track: attribute tokens to channels (You vs Them).
+                // Envelope load streams the file; run it off the main actor.
+                var envelopes: ChannelEnvelopes? = nil
+                if snap.hasSystemAudio {
+                    envelopes = try? await Task.detached {
+                        try ChannelEnvelopes.load(from: audioURL)
+                    }.value
+                    if envelopes?.isStereo != true { envelopes = nil } // mono despite flag → normal path
+                }
+
+                if let envelopes {
+                    async let asrTask = transcriber.transcribeWithTimings(fileAt: audioURL)
+                    // Diarize only the system channel so remote speakers cluster
+                    // cleanly and the user's voice never lands in the clusters.
+                    var systemSegments: [TimedSpeakerSegment]? = nil
+                    if runDiarization,
+                       let systemURL = try? await Task.detached(operation: {
+                           try ChannelEnvelopes.writeSystemChannel(from: audioURL)
+                       }).value {
+                        systemSegments = try? await diarizer.diarize(fileAt: systemURL, numSpeakers: -1)
+                        try? FileManager.default.removeItem(at: systemURL)
+                    }
+                    let asrResult = try await asrTask
+                    let segments = systemSegments
+
+                    let updated = applyPipelineUpdate(id: id) {
+                        $0.transcript = asrResult.text
+                        if let timings = asrResult.tokenTimings, !timings.isEmpty {
+                            $0.speakerTurns = Self.attributeTokensToChannels(
+                                tokens: timings,
+                                envelopes: envelopes,
+                                systemSegments: segments
+                            )
+                        }
+                    }
+                    if updated == nil { return }
+                } else if runDiarization {
                     // Speaker count hint: number of currently-checked attendees, if any.
                     // Use the snap from before the await so the hint is consistent.
                     let hintedSpeakerCount = snap.attendees.filter { $0.selected }.count
