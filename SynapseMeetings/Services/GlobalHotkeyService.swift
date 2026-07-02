@@ -20,6 +20,10 @@ final class GlobalHotkeyService: ObservableObject {
 
     private init() {
         keyCombo = KeyCombo.load()
+        // Test hosts boot the real app (TEST_HOST); registering monitors or
+        // prompting for Accessibility there spams permission dialogs on every
+        // xcodebuild test run.
+        guard !TestEnvironment.isRunningTests else { return }
         registerMonitors()
         // If a hotkey is set but we don't have access yet, prompt immediately on launch.
         if keyCombo != nil && !AXIsProcessTrusted() {
