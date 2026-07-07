@@ -6,6 +6,19 @@
     <description>Most recent changes with links to updates.</description>
     <language>en</language>
     <item>
+      <title>Version 0.6.0</title>
+      <pubDate>Tue, 07 Jul 2026 10:50:58 +0000</pubDate>
+      <sparkle:version>22</sparkle:version>
+      <sparkle:shortVersionString>0.6.0</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <description><![CDATA[<h2>What's new in 0.6.0</h2><ul><li>System audio capture toggle — record both sides of a headphone call, with a fallback notice when unsupported</li><li>Summarization prompt now understands You/Them speaker labels</li><li>Fixed mic+system-audio aggregate capture dropping the system audio stream (now read via raw IOProc instead of AVAudioEngine's tap)</li><li>Fixed audio engine input not resetting cleanly after aggregate device teardown</li></ul>]]></description>
+      <enclosure
+        url="https://github.com/dep/synapse-meetings/releases/download/0.6.0/SynapseMeetings-0.6.0.dmg"
+        sparkle:edSignature="mdMlMr7pO6n1+rY+iEIjtOYXDma1zGxOI0m64ZzmyZ5TmDxXwlD5ivsR/KpFoPXYG4Bhh/ek0uQdG1E80IX5BA=="
+        length="7653151"
+        type="application/octet-stream" />
+    </item>
+    <item>
       <title>Version 0.5.2</title>
       <pubDate>Wed, 01 Jul 2026 09:08:57 +0000</pubDate>
       <sparkle:version>21</sparkle:version>
