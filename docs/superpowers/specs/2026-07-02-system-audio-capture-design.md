@@ -57,18 +57,18 @@ speaker attribution beyond what diarization alone provides.
   surfaces as an activation failure and falls back to mic-only (no separate
   permission-state API).
 
-**`AudioRecorder` changes (minimal):**
+**`AudioRecorder` changes:**
 
 - When system capture is enabled + supported + permitted, `start(writingTo:)`
-  asks `SystemAudioTap` for the aggregate device and points the existing
-  engine's input at it — reusing the same
-  `kAudioOutputUnitProperty_CurrentDevice` mechanism already in
-  `applyPreferredInputDevice()`. Otherwise the current mic-only path runs
-  unchanged.
-- The input format then contains mic channels followed by tap channels (order
-  follows the aggregate's sub-device list). `CaptureContext` routes: mic
-  channel(s) → output channel 0 (L, "You"), tap channels downmixed → output
-  channel 1 (R, "Them").
+  asks `SystemAudioTap` for the aggregate device and reads it with a raw
+  `AudioDeviceCreateIOProcID` IOProc. (AVAudioEngine cannot be used here: its
+  inputNode exposes only the first stream of a multi-stream device — the mic —
+  and silently drops the tap's stream.) Otherwise the current mic-only
+  AVAudioEngine path runs unchanged.
+- The IOProc's AudioBufferList carries one buffer per stream (mic first, tap
+  after); `CaptureContext.makeCombinedBuffer` deinterleaves them into one
+  N-channel buffer, then `CaptureContext` routes: mic channel(s) → output
+  channel 0 (L, "You"), tap channels downmixed → output channel 1 (R, "Them").
 - Level meter continues to reflect the mic channel.
 
 ### 2. File format & persistence
