@@ -296,3 +296,86 @@ final class CaptureContextTests: XCTestCase {
         ctx.finish()
     }
 }
+
+// MARK: - makeCombinedBuffer (IOProc AudioBufferList -> non-interleaved PCM)
+
+final class CombinedBufferTests: XCTestCase {
+
+    /// Builds an ABL like a mic+tap aggregate IOProc delivers: stream 0 = mono mic,
+    /// stream 1 = stereo tap (interleaved within the stream buffer).
+    private func makeTwoStreamABL(frames: Int, mic: Float, tapL: Float, tapR: Float)
+        -> (UnsafeMutablePointer<AudioBufferList>, [UnsafeMutableRawPointer]) {
+        let abl = AudioBufferList.allocate(maximumBuffers: 2)
+        let micBytes = frames * MemoryLayout<Float>.size
+        let tapBytes = frames * 2 * MemoryLayout<Float>.size
+        let micData = UnsafeMutableRawPointer.allocate(byteCount: micBytes, alignment: 16)
+        let tapData = UnsafeMutableRawPointer.allocate(byteCount: tapBytes, alignment: 16)
+        let micPtr = micData.bindMemory(to: Float.self, capacity: frames)
+        let tapPtr = tapData.bindMemory(to: Float.self, capacity: frames * 2)
+        for i in 0..<frames {
+            micPtr[i] = mic
+            tapPtr[i * 2] = tapL
+            tapPtr[i * 2 + 1] = tapR
+        }
+        abl[0] = AudioBuffer(mNumberChannels: 1, mDataByteSize: UInt32(micBytes), mData: micData)
+        abl[1] = AudioBuffer(mNumberChannels: 2, mDataByteSize: UInt32(tapBytes), mData: tapData)
+        return (abl.unsafeMutablePointer, [micData, tapData])
+    }
+
+    func testCombine_twoStreams_deinterleavesIntoThreeChannels() {
+        let (abl, raw) = makeTwoStreamABL(frames: 480, mic: 0.5, tapL: 0.2, tapR: 0.4)
+        defer { raw.forEach { $0.deallocate() }; free(abl) }
+
+        let buf = CaptureContext.makeCombinedBuffer(from: abl, sampleRate: 48_000)
+        XCTAssertNotNil(buf)
+        guard let buf else { return }
+        XCTAssertEqual(buf.format.channelCount, 3)
+        XCTAssertEqual(Int(buf.frameLength), 480)
+        XCTAssertEqual(buf.format.sampleRate, 48_000)
+        XCTAssertFalse(buf.format.isInterleaved)
+        XCTAssertEqual(buf.floatChannelData![0][0], 0.5, accuracy: 0.0001, "ch0 = mic stream")
+        XCTAssertEqual(buf.floatChannelData![1][0], 0.2, accuracy: 0.0001, "ch1 = tap L (deinterleaved)")
+        XCTAssertEqual(buf.floatChannelData![2][0], 0.4, accuracy: 0.0001, "ch2 = tap R (deinterleaved)")
+        XCTAssertEqual(buf.floatChannelData![1][479], 0.2, accuracy: 0.0001, "last frame intact")
+    }
+
+    /// Combined buffer feeds the existing dual-track routing: mic -> L, tap avg -> R.
+    func testCombine_thenDualTrackIngest_routesCorrectly() throws {
+        let (abl, raw) = makeTwoStreamABL(frames: 480, mic: 0.5, tapL: 0.2, tapR: 0.4)
+        defer { raw.forEach { $0.deallocate() }; free(abl) }
+        guard let combined = CaptureContext.makeCombinedBuffer(from: abl, sampleRate: 16_000) else {
+            return XCTFail("combine failed")
+        }
+
+        let target = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16_000,
+                                   channels: 2, interleaved: false)!
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString).appendingPathExtension("wav")
+        addTeardownBlock { try? FileManager.default.removeItem(at: url) }
+        let settings: [String: Any] = [
+            AVFormatIDKey: kAudioFormatLinearPCM,
+            AVSampleRateKey: 16_000,
+            AVNumberOfChannelsKey: 2,
+            AVLinearPCMBitDepthKey: 32,
+            AVLinearPCMIsFloatKey: true,
+            AVLinearPCMIsNonInterleaved: false,
+            AVLinearPCMIsBigEndianKey: false
+        ]
+        let file = try AVAudioFile(forWriting: url, settings: settings,
+                                   commonFormat: .pcmFormatFloat32, interleaved: false)
+        let ctx = CaptureContext(audioFile: file, converter: nil, targetFormat: target,
+                                 layout: .dualTrack(micChannels: 1))
+        let outcome = ctx.ingest(buffer: combined)
+        XCTAssertNil(outcome.error)
+        let drained = ctx.drainSamples()
+        XCTAssertEqual(drained.count, 480)
+        XCTAssertEqual(drained[0], 0.4, accuracy: 0.001, "(L 0.5 + R 0.3) / 2")
+        ctx.finish()
+    }
+
+    func testCombine_zeroFrames_returnsNil() {
+        let (abl, raw) = makeTwoStreamABL(frames: 0, mic: 0, tapL: 0, tapR: 0)
+        defer { raw.forEach { $0.deallocate() }; free(abl) }
+        XCTAssertNil(CaptureContext.makeCombinedBuffer(from: abl, sampleRate: 48_000))
+    }
+}

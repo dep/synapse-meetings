@@ -4,9 +4,12 @@ import AudioToolbox
 
 /// Wraps a Core Audio process tap (global system-output mixdown, excluding our
 /// own process) plus an aggregate device combining that tap with the microphone.
-/// Both sources share the aggregate's clock (tap drift-compensated), so
-/// AVAudioEngine receives mic + system channels sample-aligned: the mic's
-/// channels come first (it is the only sub-device), the tap's stereo mixdown after.
+/// Both sources share the aggregate's clock (tap drift-compensated) and arrive
+/// sample-aligned in one IOProc callback: the mic's stream comes first (it is
+/// the only sub-device), the tap's stereo mixdown after. The aggregate must be
+/// read with a raw `AudioDeviceCreateIOProcID` — AVAudioEngine's inputNode
+/// exposes only the first stream of a multi-stream device and would silently
+/// drop the tap's audio.
 ///
 /// The first activation triggers macOS's "record system audio" consent prompt
 /// (NSAudioCaptureUsageDescription). If the user denies it, tap creation fails

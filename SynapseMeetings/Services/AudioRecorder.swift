@@ -199,6 +199,65 @@ final class CaptureContext: @unchecked Sendable {
         }
         return out
     }
+
+    /// Assembles a raw IOProc `AudioBufferList` (one buffer per stream, samples
+    /// interleaved within each stream) into a single non-interleaved N-channel
+    /// buffer for `ingest`. Stream order is preserved: a mic+tap aggregate
+    /// delivers the mic stream first, so its channels land at index 0. Frame
+    /// count is the minimum across streams.
+    static func makeCombinedBuffer(from ablPointer: UnsafePointer<AudioBufferList>,
+                                   sampleRate: Double) -> AVAudioPCMBuffer? {
+        let abl = UnsafeMutableAudioBufferListPointer(UnsafeMutablePointer(mutating: ablPointer))
+        guard abl.count > 0 else { return nil }
+        var totalChannels = 0
+        var frames = Int.max
+        for buf in abl {
+            let ch = max(1, Int(buf.mNumberChannels))
+            totalChannels += ch
+            frames = min(frames, Int(buf.mDataByteSize) / (MemoryLayout<Float>.size * ch))
+        }
+        guard frames > 0, frames != Int.max, totalChannels > 0 else { return nil }
+
+        var asbd = AudioStreamBasicDescription(
+            mSampleRate: sampleRate,
+            mFormatID: kAudioFormatLinearPCM,
+            mFormatFlags: kAudioFormatFlagIsFloat | kAudioFormatFlagIsNonInterleaved | kAudioFormatFlagIsPacked,
+            mBytesPerPacket: 4,
+            mFramesPerPacket: 1,
+            mBytesPerFrame: 4,
+            mChannelsPerFrame: UInt32(totalChannels),
+            mBitsPerChannel: 32,
+            mReserved: 0
+        )
+        // Discrete layout supports any channel count; the convenience
+        // AVAudioFormat initializer returns nil above stereo.
+        guard let channelLayout = AVAudioChannelLayout(
+                  layoutTag: kAudioChannelLayoutTag_DiscreteInOrder | UInt32(totalChannels)),
+              let format = AVAudioFormat(streamDescription: &asbd, channelLayout: channelLayout),
+              let out = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(frames)),
+              let dst = out.floatChannelData else { return nil }
+        out.frameLength = AVAudioFrameCount(frames)
+        var channelOffset = 0
+        for buf in abl {
+            let ch = max(1, Int(buf.mNumberChannels))
+            guard let data = buf.mData else {
+                for c in 0..<ch {
+                    dst[channelOffset + c].update(repeating: 0, count: frames)
+                }
+                channelOffset += ch
+                continue
+            }
+            let samples = data.bindMemory(to: Float.self, capacity: frames * ch)
+            for c in 0..<ch {
+                let dstChannel = dst[channelOffset + c]
+                for f in 0..<frames {
+                    dstChannel[f] = samples[f * ch + c]
+                }
+            }
+            channelOffset += ch
+        }
+        return out
+    }
 }
 
 @MainActor
@@ -236,9 +295,12 @@ final class AudioRecorder: ObservableObject {
     @Published private(set) var systemAudioNotice: String?
     /// Typed Any so the class compiles on macOS 14.0 (SystemAudioTap is 14.4+).
     private var systemTap: Any?
-    /// True when the engine's input unit may still point at a destroyed
-    /// aggregate device from a previous dual-track recording.
-    private var inputDeviceNeedsReset = false
+    /// Raw IOProc reading the mic+tap aggregate. Dual-track recordings bypass
+    /// AVAudioEngine entirely: its inputNode exposes only the FIRST stream of a
+    /// multi-stream device (the mic), silently dropping the tap's stream. A raw
+    /// IOProc receives every stream in one AudioBufferList, sample-aligned.
+    private var ioProcID: AudioDeviceIOProcID?
+    private var ioProcDeviceID = AudioDeviceID(kAudioObjectUnknown)
 
     /// Request microphone permission once at app launch. Safe to call repeatedly —
     /// the OS shows the dialog only on the first call when status is `.notDetermined`.
@@ -270,20 +332,21 @@ final class AudioRecorder: ObservableObject {
         systemAudioNotice = nil
         systemAudioActive = false
         var layout: CaptureLayout = .mono
+        var aggregate: (deviceID: AudioDeviceID, sampleRate: Double)?
         if systemAudioEnabled {
             if #available(macOS 14.4, *) {
                 do {
                     let tap = SystemAudioTap()
                     let activation = try tap.activate(preferredMicUID: preferredInputDeviceUID)
-                    guard setEngineInputDevice(activation.aggregateID) else {
+                    guard let rate = Self.nominalSampleRate(of: activation.aggregateID) else {
                         tap.teardown()
                         throw NSError(domain: "AudioRecorder", code: 3,
-                                      userInfo: [NSLocalizedDescriptionKey: "Could not select capture aggregate device"])
+                                      userInfo: [NSLocalizedDescriptionKey: "Could not read capture device sample rate"])
                     }
                     systemTap = tap
                     layout = .dualTrack(micChannels: activation.micChannelCount)
+                    aggregate = (activation.aggregateID, rate)
                     systemAudioActive = true
-                    inputDeviceNeedsReset = false
                 } catch {
                     NSLog("AudioRecorder: system audio capture unavailable — \(error.localizedDescription)")
                     systemAudioNotice = "System audio unavailable — recording microphone only"
@@ -291,10 +354,6 @@ final class AudioRecorder: ObservableObject {
             }
         }
         if !systemAudioActive {
-            if inputDeviceNeedsReset {
-                resetEngineInputToDefault()
-                inputDeviceNeedsReset = false
-            }
             applyPreferredInputDevice()
         }
 
@@ -302,15 +361,6 @@ final class AudioRecorder: ObservableObject {
         // tap down on failure so the CoreAudio tap/aggregate never leak (stop()
         // won't run — isRecording is still false at these throw sites).
         do {
-            let input = engine.inputNode
-            input.removeTap(onBus: 0)
-            if engine.isRunning {
-                engine.stop()
-            }
-            engine.reset()
-
-            let inputFormat = input.outputFormat(forBus: 0)
-
             let outputChannels: AVAudioChannelCount = systemAudioActive ? 2 : targetChannels
             guard let targetFormat = AVAudioFormat(
                 commonFormat: .pcmFormatFloat32,
@@ -335,40 +385,75 @@ final class AudioRecorder: ObservableObject {
             let file = try AVAudioFile(forWriting: url, settings: fileSettings,
                                        commonFormat: .pcmFormatFloat32, interleaved: false)
 
-            let converterInputFormat: AVAudioFormat
-            switch layout {
-            case .mono:
-                converterInputFormat = inputFormat
-            case .dualTrack:
-                // CaptureContext routes N-channel aggregate buffers to stereo before
-                // conversion, so the converter's input side is stereo at the device rate.
+            if let aggregate {
+                // Dual-track: read the mic+tap aggregate with a raw IOProc (see
+                // `ioProcID` for why AVAudioEngine cannot be used here).
+                // CaptureContext routes N-channel buffers to stereo before
+                // conversion, so the converter's input is stereo at the device rate.
                 guard let stereoIn = AVAudioFormat(commonFormat: .pcmFormatFloat32,
-                                                   sampleRate: inputFormat.sampleRate,
+                                                   sampleRate: aggregate.sampleRate,
                                                    channels: 2,
                                                    interleaved: false) else {
                     throw NSError(domain: "AudioRecorder", code: -1,
                                   userInfo: [NSLocalizedDescriptionKey: "Could not build routed stereo format"])
                 }
-                converterInputFormat = stereoIn
-            }
-            let converter = AVAudioConverter(from: converterInputFormat, to: targetFormat)
+                let converter = AVAudioConverter(from: stereoIn, to: targetFormat)
+                let context = CaptureContext(audioFile: file, converter: converter,
+                                             targetFormat: targetFormat, layout: layout)
+                captureContext = context
 
-            let context = CaptureContext(audioFile: file, converter: converter,
-                                         targetFormat: targetFormat, layout: layout)
-            captureContext = context
-
-            input.installTap(onBus: 0, bufferSize: 4096, format: inputFormat) { [weak self] buffer, _ in
-                let outcome = context.ingest(buffer: buffer)
-                if outcome.level != nil || outcome.error != nil {
-                    Task { @MainActor in
-                        if let lvl = outcome.level { self?.level = min(1, max(0, lvl * 4)) }
-                        if let err = outcome.error { self?.lastError = err }
+                let deviceRate = aggregate.sampleRate
+                var procID: AudioDeviceIOProcID?
+                let createStatus = AudioDeviceCreateIOProcIDWithBlock(&procID, aggregate.deviceID, nil) { [weak self] _, inInputData, _, _, _ in
+                    guard let combined = CaptureContext.makeCombinedBuffer(from: inInputData,
+                                                                           sampleRate: deviceRate) else { return }
+                    let outcome = context.ingest(buffer: combined)
+                    if outcome.level != nil || outcome.error != nil {
+                        Task { @MainActor in
+                            if let lvl = outcome.level { self?.level = min(1, max(0, lvl * 4)) }
+                            if let err = outcome.error { self?.lastError = err }
+                        }
                     }
                 }
-            }
+                guard createStatus == noErr, let procID else {
+                    throw NSError(domain: "AudioRecorder", code: 4,
+                                  userInfo: [NSLocalizedDescriptionKey: "Could not create capture IOProc (status \(createStatus))"])
+                }
+                ioProcID = procID
+                ioProcDeviceID = aggregate.deviceID
+                let startStatus = AudioDeviceStart(aggregate.deviceID, procID)
+                guard startStatus == noErr else {
+                    throw NSError(domain: "AudioRecorder", code: 5,
+                                  userInfo: [NSLocalizedDescriptionKey: "Could not start capture device (status \(startStatus))"])
+                }
+            } else {
+                // Mic-only: existing AVAudioEngine path, unchanged.
+                let input = engine.inputNode
+                input.removeTap(onBus: 0)
+                if engine.isRunning {
+                    engine.stop()
+                }
+                engine.reset()
 
-            engine.prepare()
-            try engine.start()
+                let inputFormat = input.outputFormat(forBus: 0)
+                let converter = AVAudioConverter(from: inputFormat, to: targetFormat)
+                let context = CaptureContext(audioFile: file, converter: converter,
+                                             targetFormat: targetFormat, layout: .mono)
+                captureContext = context
+
+                input.installTap(onBus: 0, bufferSize: 4096, format: inputFormat) { [weak self] buffer, _ in
+                    let outcome = context.ingest(buffer: buffer)
+                    if outcome.level != nil || outcome.error != nil {
+                        Task { @MainActor in
+                            if let lvl = outcome.level { self?.level = min(1, max(0, lvl * 4)) }
+                            if let err = outcome.error { self?.lastError = err }
+                        }
+                    }
+                }
+
+                engine.prepare()
+                try engine.start()
+            }
 
             startedAt = Date()
             elapsed = 0
@@ -385,6 +470,8 @@ final class AudioRecorder: ObservableObject {
             RunLoop.main.add(ct, forMode: .common)
             chunkTimer = ct
         } catch {
+            captureContext?.finish()
+            captureContext = nil
             teardownSystemTap()
             throw error
         }
@@ -395,10 +482,15 @@ final class AudioRecorder: ObservableObject {
         guard isRecording else { return outputURL }
         chunkTimer?.invalidate()
         chunkTimer = nil
-        // removeTap/stop before finish so no new callbacks arrive after finish().
-        engine.inputNode.removeTap(onBus: 0)
-        engine.stop()
-        engine.reset()
+        // Stop the audio source before finish() so no new callbacks arrive
+        // after the file closes.
+        if ioProcID != nil {
+            stopIOProc()
+        } else {
+            engine.inputNode.removeTap(onBus: 0)
+            engine.stop()
+            engine.reset()
+        }
         timer?.invalidate()
         timer = nil
         isRecording = false
@@ -410,16 +502,41 @@ final class AudioRecorder: ObservableObject {
         return url
     }
 
-    /// Tears down the system tap/aggregate (if any) and resets dual-track state.
-    /// Used by stop() and by start()'s failure paths so a throw after tap
-    /// activation can never leak the CoreAudio objects.
+    /// Stops and destroys the aggregate IOProc, if running. Idempotent.
+    private func stopIOProc() {
+        if let procID = ioProcID, ioProcDeviceID != kAudioObjectUnknown {
+            AudioDeviceStop(ioProcDeviceID, procID)
+            AudioDeviceDestroyIOProcID(ioProcDeviceID, procID)
+        }
+        ioProcID = nil
+        ioProcDeviceID = AudioDeviceID(kAudioObjectUnknown)
+    }
+
+    /// Tears down the IOProc and the system tap/aggregate (if any) and resets
+    /// dual-track state. Used by stop() and by start()'s failure paths so a
+    /// throw after tap activation can never leak the CoreAudio objects.
     private func teardownSystemTap() {
+        stopIOProc()
         if #available(macOS 14.4, *), let tap = systemTap as? SystemAudioTap {
             tap.teardown()
-            inputDeviceNeedsReset = true
         }
         systemTap = nil
         systemAudioActive = false
+    }
+
+    /// The aggregate's nominal sample rate — the rate at which the IOProc
+    /// delivers both the mic and tap streams (drift-compensated).
+    private static func nominalSampleRate(of deviceID: AudioDeviceID) -> Double? {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyNominalSampleRate,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var rate: Float64 = 0
+        var size = UInt32(MemoryLayout<Float64>.size)
+        let status = AudioObjectGetPropertyData(deviceID, &address, 0, nil, &size, &rate)
+        guard status == noErr, rate > 0 else { return nil }
+        return rate
     }
 
     private func fireChunk() {
@@ -484,7 +601,7 @@ final class AudioRecorder: ObservableObject {
         setEngineInputDevice(deviceID)
     }
 
-    /// Points the engine's input AudioUnit at a specific device (mic or aggregate).
+    /// Points the engine's input AudioUnit at a specific input device.
     @discardableResult
     private func setEngineInputDevice(_ deviceID: AudioDeviceID) -> Bool {
         guard let unit = engine.inputNode.audioUnit else {
@@ -505,28 +622,6 @@ final class AudioRecorder: ObservableObject {
             return false
         }
         return true
-    }
-
-    /// Points the engine's input back at the system-default input device.
-    /// Needed after tearing down the capture aggregate: the input unit would
-    /// otherwise keep referencing the destroyed device ID.
-    private func resetEngineInputToDefault() {
-        var address = AudioObjectPropertyAddress(
-            mSelector: kAudioHardwarePropertyDefaultInputDevice,
-            mScope: kAudioObjectPropertyScopeGlobal,
-            mElement: kAudioObjectPropertyElementMain
-        )
-        var deviceID = AudioDeviceID(kAudioObjectUnknown)
-        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
-        let status = AudioObjectGetPropertyData(
-            AudioObjectID(kAudioObjectSystemObject),
-            &address, 0, nil, &size, &deviceID
-        )
-        guard status == noErr, deviceID != kAudioObjectUnknown else {
-            NSLog("AudioRecorder: could not resolve default input device (status \(status))")
-            return
-        }
-        setEngineInputDevice(deviceID)
     }
 
     private func audioDeviceID(forUID uid: String) -> AudioDeviceID? {
