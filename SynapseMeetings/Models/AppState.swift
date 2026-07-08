@@ -20,7 +20,10 @@ final class AppState: ObservableObject {
     @Published private(set) var activeRecordingID: Recording.ID?
     @Published var settingsOpenRequest = UUID()
 
-    @Published private(set) var liveTranscript: String = ""
+    /// Live-transcription turns accumulated chunk-by-chunk while recording.
+    /// Dual-track chunks are attributed You/Them like the final pass; mono
+    /// chunks append one unlabeled ("") turn that merges into the previous one.
+    @Published private(set) var liveTurns: [SpeakerTurn] = []
     @Published private(set) var recentAttendees: [String] = []
 
     struct PendingRecordingPrefill {
@@ -205,7 +208,7 @@ final class AppState: ObservableObject {
 
     func startNewRecording() throws -> Recording {
         let url = store.newAudioURL()
-        liveTranscript = ""
+        liveTurns = []
         recorder.onChunk = { [weak self] chunkURL in
             self?.handleChunk(chunkURL)
         }
@@ -239,15 +242,30 @@ final class AppState: ObservableObject {
         let task = Task { [weak self] in
             guard let self else { return }
             do {
-                let text = try await transcriber.transcribe(fileAt: url)
+                let asrResult = try await transcriber.transcribeWithTimings(fileAt: url)
+                // Envelope load streams the ~10 s chunk; keep it off the main actor.
+                let envelopes = try? await Task.detached {
+                    try ChannelEnvelopes.load(from: url)
+                }.value
                 try? FileManager.default.removeItem(at: url)
                 guard !Task.isCancelled else { return }
-                let cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !cleaned.isEmpty else { return }
-                // Chunks are disjoint audio segments now — append, don't replace.
-                self.liveTranscript = self.liveTranscript.isEmpty
-                    ? cleaned
-                    : self.liveTranscript + " " + cleaned
+
+                // Chunks are disjoint audio segments — append turns, don't replace.
+                // Dual-track chunk: same You/Them attribution as the final pass.
+                if let envelopes, envelopes.isStereo,
+                   let timings = asrResult.tokenTimings, !timings.isEmpty {
+                    let turns = Self.attributeTokensToChannels(
+                        tokens: timings,
+                        envelopes: envelopes,
+                        systemSegments: nil
+                    )
+                    self.liveTurns = Self.appendingTurns(turns, to: self.liveTurns)
+                } else {
+                    let cleaned = asrResult.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !cleaned.isEmpty else { return }
+                    let turn = SpeakerTurn(speakerLabel: "", startSec: 0, endSec: 0, text: cleaned)
+                    self.liveTurns = Self.appendingTurns([turn], to: self.liveTurns)
+                }
             } catch {
                 NSLog("Live chunk transcription failed: \(error)")
                 try? FileManager.default.removeItem(at: url)

@@ -259,24 +259,20 @@ private struct RecordingInProgressView: View {
                 ScrollViewReader { proxy in
                     ScrollView {
                         VStack(alignment: .leading, spacing: 0) {
-                            if app.liveTranscript.isEmpty {
+                            if app.liveTurns.isEmpty {
                                 Text("Transcription will appear here as you speak…")
                                     .font(.callout)
                                     .foregroundStyle(.tertiary)
                                     .padding(16)
                             } else {
-                                Text(app.liveTranscript)
-                                    .font(.system(.body, design: .default))
-                                    .foregroundStyle(.primary)
-                                    .textSelection(.enabled)
+                                LiveTurnsView(turns: app.liveTurns)
                                     .padding(.horizontal, 16)
                                     .padding(.vertical, 8)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
                                     .id("transcript")
                             }
                         }
                     }
-                    .onChange(of: app.liveTranscript) { _, _ in
+                    .onChange(of: app.liveTurns) { _, _ in
                         withAnimation { proxy.scrollTo("transcript", anchor: .bottom) }
                     }
                 }
@@ -337,6 +333,32 @@ private struct RecordingInProgressView: View {
     }
 }
 
+/// Live-transcript turn list: a small bold uppercase speaker label above each
+/// turn's text. Unlabeled turns (mono recordings) render with no header, so
+/// mic-only recordings keep the old flat look.
+private struct LiveTurnsView: View {
+    let turns: [SpeakerTurn]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            ForEach(Array(turns.enumerated()), id: \.offset) { _, turn in
+                VStack(alignment: .leading, spacing: 3) {
+                    if !turn.speakerLabel.isEmpty {
+                        Text(turn.speakerLabel.uppercased())
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(turn.speakerLabel == "You" ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.secondary))
+                    }
+                    Text(turn.text)
+                        .font(.system(.body, design: .default))
+                        .foregroundStyle(.primary)
+                        .textSelection(.enabled)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
 private struct TranscribingView: View {
     @EnvironmentObject var app: AppState
     let message: String
@@ -357,15 +379,11 @@ private struct TranscribingView: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    if app.liveTranscript.isEmpty {
+                    if app.liveTurns.isEmpty {
                         ProcessingView(message: message, systemImage: "waveform.badge.magnifyingglass")
                     } else {
-                        Text(app.liveTranscript)
-                            .font(.system(.body, design: .default))
-                            .foregroundStyle(.primary)
-                            .textSelection(.enabled)
+                        LiveTurnsView(turns: app.liveTurns)
                             .padding(16)
-                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
             }
