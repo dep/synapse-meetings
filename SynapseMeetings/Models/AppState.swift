@@ -254,11 +254,11 @@ final class AppState: ObservableObject {
                 // Dual-track chunk: same You/Them attribution as the final pass.
                 if let envelopes, envelopes.isStereo,
                    let timings = asrResult.tokenTimings, !timings.isEmpty {
-                    let turns = Self.attributeTokensToChannels(
+                    let turns = Self.demotingShortYouTurns(Self.attributeTokensToChannels(
                         tokens: timings,
                         envelopes: envelopes,
                         systemSegments: nil
-                    )
+                    ))
                     self.liveTurns = Self.appendingTurns(turns, to: self.liveTurns)
                 } else {
                     let cleaned = asrResult.text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -736,6 +736,27 @@ final class AppState: ObservableObject {
     /// and the Claude prompt.
     static func formatSpeakerTurns(_ turns: [SpeakerTurn]) -> String {
         turns.map { "\($0.speakerLabel): \($0.text)" }.joined(separator: "\n\n")
+    }
+
+    /// Live chunks mis-attribute brief mic bleed (echo of the remote side) as
+    /// "You". A real utterance is rarely under 5 characters, so demote those
+    /// blips to "Them" and merge the now-adjacent same-label turns.
+    static func demotingShortYouTurns(_ turns: [SpeakerTurn], minLength: Int = 5) -> [SpeakerTurn] {
+        var out: [SpeakerTurn] = []
+        for var turn in turns {
+            if turn.speakerLabel == "You",
+               turn.text.trimmingCharacters(in: .whitespacesAndNewlines).count < minLength {
+                turn.speakerLabel = "Them"
+            }
+            if var last = out.last, last.speakerLabel == turn.speakerLabel {
+                last.text += " " + turn.text
+                last.endSec = turn.endSec
+                out[out.count - 1] = last
+            } else {
+                out.append(turn)
+            }
+        }
+        return out
     }
 
     /// Append live-chunk turns to the accumulated list. A speaker talking across

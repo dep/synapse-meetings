@@ -115,6 +115,59 @@ final class AppStatePipelineTests: XCTestCase {
         ])
     }
 
+    // MARK: - demotingShortYouTurns (live mic-bleed filter)
+
+    func testDemote_shortYouBetweenThemTurns_mergesIntoOneThemTurn() {
+        let turns = [
+            SpeakerTurn(speakerLabel: "Them", startSec: 0, endSec: 4, text: "we've also asked uh T"),
+            SpeakerTurn(speakerLabel: "You", startSec: 4, endSec: 5, text: "ish"),
+            SpeakerTurn(speakerLabel: "Them", startSec: 5, endSec: 9, text: "and the AI platform"),
+        ]
+        XCTAssertEqual(AppState.demotingShortYouTurns(turns), [
+            SpeakerTurn(speakerLabel: "Them", startSec: 0, endSec: 9,
+                        text: "we've also asked uh T ish and the AI platform")
+        ])
+    }
+
+    func testDemote_longYouTurnIsPreserved() {
+        let turns = [
+            SpeakerTurn(speakerLabel: "Them", startSec: 0, endSec: 4, text: "What do you think?"),
+            SpeakerTurn(speakerLabel: "You", startSec: 4, endSec: 8, text: "Sounds good to me."),
+        ]
+        XCTAssertEqual(AppState.demotingShortYouTurns(turns), turns)
+    }
+
+    func testDemote_shortYouAtStart_becomesThem() {
+        let turns = [
+            SpeakerTurn(speakerLabel: "You", startSec: 0, endSec: 1, text: "."),
+            SpeakerTurn(speakerLabel: "Them", startSec: 1, endSec: 5, text: "think James, yeah you added an item"),
+        ]
+        XCTAssertEqual(AppState.demotingShortYouTurns(turns), [
+            SpeakerTurn(speakerLabel: "Them", startSec: 0, endSec: 5,
+                        text: ". think James, yeah you added an item")
+        ])
+    }
+
+    func testDemote_shortThemTurnIsUntouched() {
+        let turns = [
+            SpeakerTurn(speakerLabel: "You", startSec: 0, endSec: 4, text: "Can everyone hear me okay?"),
+            SpeakerTurn(speakerLabel: "Them", startSec: 4, endSec: 5, text: "Yes"),
+        ]
+        XCTAssertEqual(AppState.demotingShortYouTurns(turns), turns)
+    }
+
+    func testDemote_fiveCharYouTurnIsPreserved() {
+        let turns = [
+            SpeakerTurn(speakerLabel: "Them", startSec: 0, endSec: 4, text: "Ready to start?"),
+            SpeakerTurn(speakerLabel: "You", startSec: 4, endSec: 5, text: "Yeah."),
+        ]
+        XCTAssertEqual(AppState.demotingShortYouTurns(turns), turns)
+    }
+
+    func testDemote_emptyInput() {
+        XCTAssertEqual(AppState.demotingShortYouTurns([]), [])
+    }
+
     // MARK: - alignTokensToSpeakers
 
     private func makeToken(_ text: String, start: Double, end: Double) -> TokenTiming {
