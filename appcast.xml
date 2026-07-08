@@ -6,6 +6,19 @@
     <description>Most recent changes with links to updates.</description>
     <language>en</language>
     <item>
+      <title>Version 0.7.2</title>
+      <pubDate>Wed, 08 Jul 2026 21:09:41 +0000</pubDate>
+      <sparkle:version>25</sparkle:version>
+      <sparkle:shortVersionString>0.7.2</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <description><![CDATA[<h2>What's new in 0.7.2</h2><ul><li>Live transcript filters mic-bleed more aggressively — <b>You</b> fragments under 10 characters are now attributed to <b>Them</b></li></ul>]]></description>
+      <enclosure
+        url="https://github.com/dep/synapse-meetings/releases/download/0.7.2/SynapseMeetings-0.7.2.dmg"
+        sparkle:edSignature="J5kvQ6pX20K5VyD6Z4Tgb/TGTavi17deAlbMmTMSSt7/vuQooGCEk7XEoMHBKLJKMvCtVE9mpsQioai20s03DA=="
+        length="7638228"
+        type="application/octet-stream" />
+    </item>
+    <item>
       <title>Version 0.7.1</title>
       <pubDate>Wed, 08 Jul 2026 18:48:42 +0000</pubDate>
       <sparkle:version>24</sparkle:version>
