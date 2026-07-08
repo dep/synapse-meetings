@@ -156,11 +156,13 @@ final class CaptureContextTests: XCTestCase {
         _ = ctx.ingest(buffer: buf)
 
         let drained = ctx.drainSamples()
-        XCTAssertEqual(drained.count, 1600,
+        XCTAssertEqual(drained.left.count, 1600,
                        "drainSamples should return exactly 1600 frames after one ingest")
+        XCTAssertTrue(drained.right.isEmpty, "mono layout must not accumulate a right channel")
+        XCTAssertFalse(drained.isStereo)
 
         let second = ctx.drainSamples()
-        XCTAssertTrue(second.isEmpty,
+        XCTAssertTrue(second.left.isEmpty,
                       "drainSamples should be empty on a second call with no new ingest")
     }
 
@@ -254,8 +256,9 @@ final class CaptureContextTests: XCTestCase {
         XCTAssertEqual(readBuf.floatChannelData![1][0], 0.3, accuracy: 0.001, "R must be the averaged tap channels")
     }
 
-    /// drainSamples in dual-track mode returns the mono mix (L+R)/2 = (0.5+0.3)/2 = 0.4.
-    func testDualTrack_drainReturnsMonoMix() throws {
+    /// drainSamples in dual-track mode returns both channels separately:
+    /// L = mic = 0.5, R = tap average = 0.3.
+    func testDualTrack_drainReturnsBothChannels() throws {
         let inputFormat = makeThreeChannelFormat(sampleRate: 16_000)
         let target = makeStereoTargetFormat()
         let url = makeTempURL()
@@ -270,8 +273,11 @@ final class CaptureContextTests: XCTestCase {
         _ = ctx.ingest(buffer: buf)
 
         let drained = ctx.drainSamples()
-        XCTAssertEqual(drained.count, 800, "drain must return one mono sample per frame")
-        XCTAssertEqual(drained[0], 0.4, accuracy: 0.001, "drain must be the (L+R)/2 mono mix")
+        XCTAssertTrue(drained.isStereo)
+        XCTAssertEqual(drained.left.count, 800, "drain must return one left sample per frame")
+        XCTAssertEqual(drained.right.count, 800, "drain must return one right sample per frame")
+        XCTAssertEqual(drained.left[0], 0.5, accuracy: 0.001, "left must be the mic channel")
+        XCTAssertEqual(drained.right[0], 0.3, accuracy: 0.001, "right must be the averaged tap channels")
         ctx.finish()
     }
 
@@ -294,6 +300,57 @@ final class CaptureContextTests: XCTestCase {
         XCTAssertEqual(result.level ?? -1, 0, accuracy: 0.001,
                        "level must come from the mic channel, not the tap")
         ctx.finish()
+    }
+}
+
+// MARK: - Chunk WAV export
+
+final class ChunkWAVTests: XCTestCase {
+
+    func testWriteChunkWAV_stereo_writesBothChannels() throws {
+        let samples = DrainedSamples(left: [Float](repeating: 0.5, count: 1600),
+                                     right: [Float](repeating: 0.3, count: 1600))
+        let url = try AudioRecorder.writeChunkWAV(samples, sampleRate: 16_000)
+        addTeardownBlock { try? FileManager.default.removeItem(at: url) }
+
+        let file = try AVAudioFile(forReading: url)
+        XCTAssertEqual(file.processingFormat.channelCount, 2)
+        XCTAssertEqual(file.processingFormat.sampleRate, 16_000)
+        let buf = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: 1600)!
+        try file.read(into: buf)
+        XCTAssertEqual(Int(buf.frameLength), 1600)
+        XCTAssertEqual(buf.floatChannelData![0][0], 0.5, accuracy: 0.001, "L = mic samples")
+        XCTAssertEqual(buf.floatChannelData![1][0], 0.3, accuracy: 0.001, "R = system samples")
+        XCTAssertEqual(buf.floatChannelData![0][1599], 0.5, accuracy: 0.001, "last frame intact")
+    }
+
+    func testWriteChunkWAV_mono_writesSingleChannel() throws {
+        let samples = DrainedSamples(left: [Float](repeating: 0.4, count: 800), right: [])
+        let url = try AudioRecorder.writeChunkWAV(samples, sampleRate: 16_000)
+        addTeardownBlock { try? FileManager.default.removeItem(at: url) }
+
+        let file = try AVAudioFile(forReading: url)
+        XCTAssertEqual(file.processingFormat.channelCount, 1)
+        let buf = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: 800)!
+        try file.read(into: buf)
+        XCTAssertEqual(Int(buf.frameLength), 800)
+        XCTAssertEqual(buf.floatChannelData![0][0], 0.4, accuracy: 0.001)
+    }
+
+    /// The IOProc can deliver a torn final buffer; a short right channel must not
+    /// crash or shift frames — it is zero-padded to the left channel's length.
+    func testWriteChunkWAV_shortRightChannel_zeroPads() throws {
+        let samples = DrainedSamples(left: [Float](repeating: 0.5, count: 100),
+                                     right: [Float](repeating: 0.3, count: 60))
+        let url = try AudioRecorder.writeChunkWAV(samples, sampleRate: 16_000)
+        addTeardownBlock { try? FileManager.default.removeItem(at: url) }
+
+        let file = try AVAudioFile(forReading: url)
+        let buf = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: 100)!
+        try file.read(into: buf)
+        XCTAssertEqual(Int(buf.frameLength), 100)
+        XCTAssertEqual(buf.floatChannelData![1][59], 0.3, accuracy: 0.001)
+        XCTAssertEqual(buf.floatChannelData![1][60], 0.0, accuracy: 0.001, "missing right samples are silence")
     }
 }
 
@@ -368,8 +425,10 @@ final class CombinedBufferTests: XCTestCase {
         let outcome = ctx.ingest(buffer: combined)
         XCTAssertNil(outcome.error)
         let drained = ctx.drainSamples()
-        XCTAssertEqual(drained.count, 480)
-        XCTAssertEqual(drained[0], 0.4, accuracy: 0.001, "(L 0.5 + R 0.3) / 2")
+        XCTAssertEqual(drained.left.count, 480)
+        XCTAssertEqual(drained.right.count, 480)
+        XCTAssertEqual(drained.left[0], 0.5, accuracy: 0.001, "L = mic stream")
+        XCTAssertEqual(drained.right[0], 0.3, accuracy: 0.001, "R = tap average")
         ctx.finish()
     }
 

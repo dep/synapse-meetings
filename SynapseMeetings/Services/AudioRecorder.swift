@@ -8,6 +8,16 @@ private extension AVAuthorizationStatus {
     var isMicrophoneGranted: Bool { self == .authorized }
 }
 
+/// Live-chunk samples drained from CaptureContext. `right` is empty for mono
+/// recordings; dual-track keeps L (mic) and R (system tap) separate so chunk
+/// transcription can attribute You vs Them.
+struct DrainedSamples {
+    let left: [Float]
+    let right: [Float]
+    var isStereo: Bool { !right.isEmpty }
+    var isEmpty: Bool { left.isEmpty }
+}
+
 /// How CaptureContext interprets incoming buffer channels.
 enum CaptureLayout {
     /// Everything downmixed to one channel (existing behavior).
@@ -32,8 +42,10 @@ final class CaptureContext: @unchecked Sendable {
     let targetFormat: AVAudioFormat
     private let layout: CaptureLayout
     /// Samples accumulated since the last chunk drain (not the full session).
-    /// Bounds memory to one chunk interval (~10 s ≈ 640 KB at 16 kHz mono Float32).
-    private var pcmBuffer: [Float] = []
+    /// Bounds memory to one chunk interval (~10 s ≈ 640 KB per channel at
+    /// 16 kHz Float32). `pcmR` stays empty for mono recordings.
+    private var pcmL: [Float] = []
+    private var pcmR: [Float] = []
     private var finished = false
 
     init(audioFile: AVAudioFile, converter: AVAudioConverter?, targetFormat: AVAudioFormat,
@@ -115,17 +127,18 @@ final class CaptureContext: @unchecked Sendable {
         return (rms, nil)
     }
 
-    /// Main thread: snapshot samples for chunk export.
+    /// Main thread: snapshot the left/mono samples (test-only API).
     func snapshotSamples() -> [Float] {
-        lock.withLock { pcmBuffer }
+        lock.withLock { pcmL }
     }
 
     /// Main thread: remove and return all samples accumulated since the last drain.
-    /// Bounds memory to one chunk interval (~10 s ≈ 640 KB at 16 kHz mono Float32).
-    func drainSamples() -> [Float] {
+    /// Bounds memory to one chunk interval per channel.
+    func drainSamples() -> DrainedSamples {
         lock.withLock {
-            let s = pcmBuffer
-            pcmBuffer.removeAll(keepingCapacity: true)
+            let s = DrainedSamples(left: pcmL, right: pcmR)
+            pcmL.removeAll(keepingCapacity: true)
+            pcmR.removeAll(keepingCapacity: true)
             return s
         }
     }
@@ -144,16 +157,11 @@ final class CaptureContext: @unchecked Sendable {
         guard let channelData = buffer.floatChannelData else { return }
         let frames = Int(buffer.frameLength)
         guard frames > 0 else { return }
+        pcmL.append(contentsOf: UnsafeBufferPointer(start: channelData[0], count: frames))
         if buffer.format.channelCount >= 2 {
-            // Dual-track: live chunks carry the mono mix of both sides.
-            var mixed = [Float](repeating: 0, count: frames)
-            for i in 0..<frames {
-                mixed[i] = (channelData[0][i] + channelData[1][i]) * 0.5
-            }
-            pcmBuffer.append(contentsOf: mixed)
-        } else {
-            let samples = Array(UnsafeBufferPointer(start: channelData[0], count: frames))
-            pcmBuffer.append(contentsOf: samples)
+            // Dual-track: keep the system side separate so live chunks can be
+            // attributed to You (L) vs Them (R).
+            pcmR.append(contentsOf: UnsafeBufferPointer(start: channelData[1], count: frames))
         }
     }
 
@@ -541,45 +549,67 @@ final class AudioRecorder: ObservableObject {
 
     private func fireChunk() {
         guard let callback = onChunk, let context = captureContext else { return }
-        let format = context.targetFormat
-        guard let monoFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32,
-                                             sampleRate: format.sampleRate,
-                                             channels: 1,
-                                             interleaved: false) else { return }
         let snapshot = context.drainSamples()
         guard !snapshot.isEmpty else { return }
+        do {
+            let url = try Self.writeChunkWAV(snapshot, sampleRate: context.targetFormat.sampleRate)
+            callback(url)
+        } catch {
+            Task { @MainActor in self.lastError = "Chunk export: \(error.localizedDescription)" }
+        }
+    }
+
+    /// Writes drained chunk samples to a temp WAV: stereo (L = mic, R = system —
+    /// same layout as the main recording file) when dual-track, mono otherwise.
+    /// A short right channel is zero-padded to the left channel's length; excess
+    /// right samples are dropped. Caller deletes the file.
+    nonisolated static func writeChunkWAV(_ samples: DrainedSamples, sampleRate: Double) throws -> URL {
+        let channels: AVAudioChannelCount = samples.isStereo ? 2 : 1
+        guard let format = AVAudioFormat(commonFormat: .pcmFormatFloat32,
+                                         sampleRate: sampleRate,
+                                         channels: channels,
+                                         interleaved: false),
+              let buf = AVAudioPCMBuffer(pcmFormat: format,
+                                         frameCapacity: AVAudioFrameCount(samples.left.count)) else {
+            throw NSError(domain: "AudioRecorder", code: -1,
+                          userInfo: [NSLocalizedDescriptionKey: "Could not allocate chunk buffer"])
+        }
+
+        let frames = samples.left.count
+        buf.frameLength = AVAudioFrameCount(frames)
+        samples.left.withUnsafeBufferPointer { src in
+            buf.floatChannelData![0].update(from: src.baseAddress!, count: frames)
+        }
+        if samples.isStereo {
+            let dst = buf.floatChannelData![1]
+            dst.update(repeating: 0, count: frames)
+            let rightFrames = min(samples.right.count, frames)
+            samples.right.withUnsafeBufferPointer { src in
+                dst.update(from: src.baseAddress!, count: rightFrames)
+            }
+        }
 
         let tmp = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)
             .appendingPathExtension("wav")
-
         let fileSettings: [String: Any] = [
             AVFormatIDKey: kAudioFormatLinearPCM,
-            AVSampleRateKey: monoFormat.sampleRate,
-            AVNumberOfChannelsKey: 1,
+            AVSampleRateKey: sampleRate,
+            AVNumberOfChannelsKey: channels,
             AVLinearPCMBitDepthKey: 32,
             AVLinearPCMIsFloatKey: true,
             AVLinearPCMIsNonInterleaved: false,
             AVLinearPCMIsBigEndianKey: false
         ]
-
         do {
             let file = try AVAudioFile(forWriting: tmp, settings: fileSettings,
                                        commonFormat: .pcmFormatFloat32, interleaved: false)
-            guard let buf = AVAudioPCMBuffer(pcmFormat: monoFormat,
-                                             frameCapacity: AVAudioFrameCount(snapshot.count)) else { return }
-            buf.frameLength = AVAudioFrameCount(snapshot.count)
-            if let dst = buf.floatChannelData?[0] {
-                snapshot.withUnsafeBufferPointer { src in
-                    dst.update(from: src.baseAddress!, count: snapshot.count)
-                }
-            }
             try file.write(from: buf)
             // file deinits here, finalizing the WAV header
-            callback(tmp)
+            return tmp
         } catch {
             try? FileManager.default.removeItem(at: tmp)
-            Task { @MainActor in self.lastError = "Chunk export: \(error.localizedDescription)" }
+            throw error
         }
     }
 
