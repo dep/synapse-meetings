@@ -739,9 +739,9 @@ final class AppState: ObservableObject {
     }
 
     /// Live chunks mis-attribute brief mic bleed (echo of the remote side) as
-    /// "You". A real utterance is rarely under 5 characters, so demote those
+    /// "You". A real utterance is rarely under 10 characters, so demote those
     /// blips to "Them" and merge the now-adjacent same-label turns.
-    static func demotingShortYouTurns(_ turns: [SpeakerTurn], minLength: Int = 5) -> [SpeakerTurn] {
+    static func demotingShortYouTurns(_ turns: [SpeakerTurn], minLength: Int = 10) -> [SpeakerTurn] {
         var out: [SpeakerTurn] = []
         for var turn in turns {
             if turn.speakerLabel == "You",

@@ -156,10 +156,20 @@ final class AppStatePipelineTests: XCTestCase {
         XCTAssertEqual(AppState.demotingShortYouTurns(turns), turns)
     }
 
-    func testDemote_fiveCharYouTurnIsPreserved() {
+    func testDemote_nineCharYouTurnIsDemoted() {
         let turns = [
             SpeakerTurn(speakerLabel: "Them", startSec: 0, endSec: 4, text: "Ready to start?"),
-            SpeakerTurn(speakerLabel: "You", startSec: 4, endSec: 5, text: "Yeah."),
+            SpeakerTurn(speakerLabel: "You", startSec: 4, endSec: 5, text: "Yeah sure"),
+        ]
+        XCTAssertEqual(AppState.demotingShortYouTurns(turns), [
+            SpeakerTurn(speakerLabel: "Them", startSec: 0, endSec: 5, text: "Ready to start? Yeah sure")
+        ])
+    }
+
+    func testDemote_tenCharYouTurnIsPreserved() {
+        let turns = [
+            SpeakerTurn(speakerLabel: "Them", startSec: 0, endSec: 4, text: "Ready to start?"),
+            SpeakerTurn(speakerLabel: "You", startSec: 4, endSec: 5, text: "Yeah sure."),
         ]
         XCTAssertEqual(AppState.demotingShortYouTurns(turns), turns)
     }
