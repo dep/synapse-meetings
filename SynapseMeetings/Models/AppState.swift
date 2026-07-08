@@ -719,4 +719,17 @@ final class AppState: ObservableObject {
     static func formatSpeakerTurns(_ turns: [SpeakerTurn]) -> String {
         turns.map { "\($0.speakerLabel): \($0.text)" }.joined(separator: "\n\n")
     }
+
+    /// Append live-chunk turns to the accumulated list. A speaker talking across
+    /// a chunk boundary produces a same-label turn pair; merge those into one
+    /// block instead of repeating the label.
+    static func appendingTurns(_ new: [SpeakerTurn], to existing: [SpeakerTurn]) -> [SpeakerTurn] {
+        guard var last = existing.last, let first = new.first,
+              last.speakerLabel == first.speakerLabel else {
+            return existing + new
+        }
+        last.text += " " + first.text
+        last.endSec = first.endSec
+        return existing.dropLast() + [last] + new.dropFirst()
+    }
 }

@@ -60,6 +60,61 @@ final class AppStatePipelineTests: XCTestCase {
         XCTAssertEqual(AppState.formatSpeakerTurns(turns), "Speaker 1: Just me.")
     }
 
+    // MARK: - appendingTurns (live transcript merge)
+
+    func testAppendingTurns_sameLabelMergesIntoLastTurn() {
+        let existing = [SpeakerTurn(speakerLabel: "You", startSec: 0, endSec: 5, text: "I think we")]
+        let new = [SpeakerTurn(speakerLabel: "You", startSec: 10, endSec: 12, text: "should ship Friday.")]
+        let result = AppState.appendingTurns(new, to: existing)
+        XCTAssertEqual(result, [
+            SpeakerTurn(speakerLabel: "You", startSec: 0, endSec: 12, text: "I think we should ship Friday.")
+        ])
+    }
+
+    func testAppendingTurns_differentLabelAppends() {
+        let existing = [SpeakerTurn(speakerLabel: "You", startSec: 0, endSec: 5, text: "Ship Friday?")]
+        let new = [SpeakerTurn(speakerLabel: "Them", startSec: 10, endSec: 12, text: "QA hasn't signed off.")]
+        let result = AppState.appendingTurns(new, to: existing)
+        XCTAssertEqual(result.count, 2)
+        XCTAssertEqual(result[0].text, "Ship Friday?")
+        XCTAssertEqual(result[1], SpeakerTurn(speakerLabel: "Them", startSec: 10, endSec: 12, text: "QA hasn't signed off."))
+    }
+
+    func testAppendingTurns_emptyExisting() {
+        let new = [SpeakerTurn(speakerLabel: "Them", startSec: 0, endSec: 2, text: "Hello.")]
+        XCTAssertEqual(AppState.appendingTurns(new, to: []), new)
+    }
+
+    func testAppendingTurns_emptyNew() {
+        let existing = [SpeakerTurn(speakerLabel: "You", startSec: 0, endSec: 5, text: "Hi.")]
+        XCTAssertEqual(AppState.appendingTurns([], to: existing), existing)
+    }
+
+    func testAppendingTurns_unlabeledTurnsMerge() {
+        // Mono recordings append unlabeled ("") turns that must flow together like today.
+        let existing = [SpeakerTurn(speakerLabel: "", startSec: 0, endSec: 10, text: "First chunk text")]
+        let new = [SpeakerTurn(speakerLabel: "", startSec: 10, endSec: 20, text: "second chunk text")]
+        let result = AppState.appendingTurns(new, to: existing)
+        XCTAssertEqual(result, [
+            SpeakerTurn(speakerLabel: "", startSec: 0, endSec: 20, text: "First chunk text second chunk text")
+        ])
+    }
+
+    func testAppendingTurns_onlyFirstNewTurnMerges() {
+        let existing = [SpeakerTurn(speakerLabel: "You", startSec: 0, endSec: 5, text: "So")]
+        let new = [
+            SpeakerTurn(speakerLabel: "You", startSec: 10, endSec: 11, text: "anyway."),
+            SpeakerTurn(speakerLabel: "Them", startSec: 11, endSec: 13, text: "Right."),
+            SpeakerTurn(speakerLabel: "You", startSec: 13, endSec: 15, text: "Cool."),
+        ]
+        let result = AppState.appendingTurns(new, to: existing)
+        XCTAssertEqual(result, [
+            SpeakerTurn(speakerLabel: "You", startSec: 0, endSec: 11, text: "So anyway."),
+            SpeakerTurn(speakerLabel: "Them", startSec: 11, endSec: 13, text: "Right."),
+            SpeakerTurn(speakerLabel: "You", startSec: 13, endSec: 15, text: "Cool."),
+        ])
+    }
+
     // MARK: - alignTokensToSpeakers
 
     private func makeToken(_ text: String, start: Double, end: Double) -> TokenTiming {
