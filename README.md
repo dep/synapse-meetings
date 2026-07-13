@@ -51,6 +51,25 @@ Then build and run the `SynapseMeetings` scheme in Xcode.
 
 See [`.agents/commands/EXPORT-SIGNED-APP.md`](.agents/commands/EXPORT-SIGNED-APP.md) for the full sign + notarize + Sparkle release pipeline.
 
+## Privacy
+
+Recordings, transcripts, and summaries stay on your Mac. Transcription runs
+entirely on-device; data is sent to Anthropic/OpenRouter or GitHub only when
+you enable those features with your own keys. No analytics, no telemetry.
+Full details in the [privacy policy](PRIVACY.md).
+
+## Acknowledgements
+
+Synapse Meetings is built on [Sparkle](https://sparkle-project.org),
+[FluidAudio](https://github.com/FluidInference/FluidAudio), NVIDIA's
+[Parakeet TDT 0.6B v3](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3)
+(CC BY 4.0), and pyannote's
+[speaker-diarization-community-1](https://huggingface.co/pyannote/speaker-diarization-community-1)
+(CC BY 4.0). Full license texts and attributions are in
+[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md), also viewable in-app from
+**Settings → About → Acknowledgements**.
+
 ## License
 
-[MIT](LICENSE) © 2026 Synapse Meetings
+[MIT](LICENSE) © 2026 Synapse Meetings — third-party components are covered
+by their own licenses; see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).

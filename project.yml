@@ -39,6 +39,8 @@ targets:
     deploymentTarget: "14.0"
     sources:
       - path: SynapseMeetings
+      - path: THIRD-PARTY-NOTICES.md
+        buildPhase: resources
     resources:
       - path: SynapseMeetings/Resources
         optional: true

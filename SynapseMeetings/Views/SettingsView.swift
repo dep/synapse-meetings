@@ -15,6 +15,7 @@ struct SettingsView: View {
     @State private var globalHotkey: KeyCombo? = GlobalHotkeyService.shared.keyCombo
     @State private var userPromptDraft: String = ""
     @State private var userPromptDebounceTask: Task<Void, Never>? = nil
+    @State private var showAcknowledgements: Bool = false
 
     private let availableModels: [String] = [
         "claude-opus-4-8",
@@ -428,10 +429,17 @@ struct SettingsView: View {
             Text("Summarization: Anthropic API or OpenRouter (free multilingual models).")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            Divider().padding(.vertical, 4)
+            HStack(spacing: 12) {
+                Button("Acknowledgements…") { showAcknowledgements = true }
+                Link("Privacy Policy", destination: URL(string: "https://github.com/dep/synapse-meetings/blob/main/PRIVACY.md")!)
+            }
+            .font(.callout)
             Spacer()
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding()
+        .sheet(isPresented: $showAcknowledgements) { AcknowledgementsSheet() }
     }
 
     @ViewBuilder
@@ -504,5 +512,39 @@ private struct CalendarToggleRow: View {
                     .foregroundStyle(.tertiary)
             }
         }
+    }
+}
+
+private struct AcknowledgementsSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    private var notices: String {
+        guard let url = Bundle.main.url(forResource: "THIRD-PARTY-NOTICES", withExtension: "md"),
+              let text = try? String(contentsOf: url, encoding: .utf8) else {
+            return "Third-party notices are available at https://github.com/dep/synapse-meetings/blob/main/THIRD-PARTY-NOTICES.md"
+        }
+        return text
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text("Acknowledgements")
+                    .font(.headline)
+                Spacer()
+                Button("Done") { dismiss() }
+                    .keyboardShortcut(.defaultAction)
+            }
+            .padding()
+            Divider()
+            ScrollView {
+                Text(notices)
+                    .font(.system(.caption, design: .monospaced))
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding()
+            }
+        }
+        .frame(width: 620, height: 480)
     }
 }
