@@ -6,6 +6,19 @@
     <description>Most recent changes with links to updates.</description>
     <language>en</language>
     <item>
+      <title>Version 0.7.3</title>
+      <pubDate>Mon, 13 Jul 2026 17:01:07 +0000</pubDate>
+      <sparkle:version>26</sparkle:version>
+      <sparkle:shortVersionString>0.7.3</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <description><![CDATA[<h2>What's new in 0.7.3</h2><ul><li>Added a privacy policy and full third-party license attributions</li><li>New <b>Acknowledgements</b> viewer and <b>Privacy Policy</b> link in Settings → About</li></ul>]]></description>
+      <enclosure
+        url="https://github.com/dep/synapse-meetings/releases/download/0.7.3/SynapseMeetings-0.7.3.dmg"
+        sparkle:edSignature="oMYTh2RjvZI15GAzsLQ0I22gNVbpYJYFe2oh0FFUG+0VdPwxD+MkCLivIh18ja+blzyerF/i/7Zs1SkRbnpnDA=="
+        length="7672361"
+        type="application/octet-stream" />
+    </item>
+    <item>
       <title>Version 0.7.2</title>
       <pubDate>Wed, 08 Jul 2026 21:09:41 +0000</pubDate>
       <sparkle:version>25</sparkle:version>
