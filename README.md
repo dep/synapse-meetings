@@ -2,9 +2,8 @@
 
 A macOS app for recording meetings, transcribing them locally, summarizing them with AI, and committing the results to GitHub.
 
-Part of the [Synapse ecosystem](https://synapseapps.io) and pairs beautifully with [Synapse Notes](https://github.com/dep/synapse-notes).
-
 ## Download
+
 
 **[⬇️ Download the latest release](https://github.com/dep/synapse-meetings/releases/latest)**
 
