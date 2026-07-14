@@ -172,7 +172,7 @@ final class DiarizationService: ObservableObject {
         return Array(UnsafeBufferPointer(start: channelData, count: count))
     }
 
-    nonisolated private static func message(for phase: DownloadUtils.DownloadPhase) -> String {
+    nonisolated private static func message(for phase: DownloadPhase) -> String {
         switch phase {
         case .listing:
             return "Looking up speaker model files…"

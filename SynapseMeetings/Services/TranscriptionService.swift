@@ -122,7 +122,7 @@ final class TranscriptionService: ObservableObject {
         return result.text
     }
 
-    nonisolated private static func message(for phase: DownloadUtils.DownloadPhase) -> String {
+    nonisolated private static func message(for phase: DownloadPhase) -> String {
         switch phase {
         case .listing:
             return "Looking up speech model files…"
